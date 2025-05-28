@@ -1,0 +1,48 @@
+# defaults.yaml
+output_path: ./results/samples.npz
+
+likelihood_type: ll2          # "ll1", "ll2", ou "ll3"
+likelihood_kwargs: 
+  noise: 0.05
+
+prior_type: gaussian   # "gaussian" or "uniform"
+
+prior_params:
+  # For gaussian prior, use:
+  sigma: {mu: 10.0, sigma: 0.5}        
+  mean: {mu: 30.0, sigma: 0.5}
+  vel_sigma: {mu: 1.0, sigma: 0.1}
+  # For uniform prior, use:
+  # sigma: {low: 8.0, high: 12.0}
+  # mean: {low: 28.0, high: 32.0}
+  # vel_sigma: {low: 0.8, high: 1.2}
+
+sampler: hmc         # "nuts" ou "hmc"
+num_samples: 5000
+num_warmup: 1000
+inv_mass_matrix: [0.1, 0.5, 0.1]
+step_size: 0.001
+num_integration_steps: 50
+
+cuda_visible_devices: 1 # Set to the GPU number you want to use in your cluster
+
+progress_bar: true
+
+initial_position:
+  sigma: 10.0
+  mean: 30.0
+  vel_sigma: 1.0
+random_seed: 123456
+
+data_params:
+  sigma: 10.0
+  mean: 30.0
+  vel_sigma: 1.0
+  n_part: 1000
+  G: 5.0
+  length: 64
+  softening: 0.1
+  t_f: 1.0
+  dt: 0.5
+  data_seed: 0
+  # Add other model parameters as needed
