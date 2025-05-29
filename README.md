@@ -1,4 +1,3 @@
-```markdown
 # N-Body Inverse Sampling
 
 A differentiable pipeline for N-body gravitational simulations with JAX and BlackJAX, supporting both forward simulation and Bayesian inference of initial conditions via MCMC.
@@ -75,7 +74,17 @@ python src/run_experiments.py --config configs/defaults.yaml
 * Runs MCMC sampling to infer parameters from the data.
 * Saves outputs (samples, traces, plots) to the results directory.
 
-### 2. Configuration
+### 2. Running Multiple Experiments
+
+Then, run:
+
+```bash
+python src/run_multiple_experiments.py ./configs/exp1.yaml ./configs/exp2.yaml
+```
+
+You can specify up to 4 config files. Each experiment will use its own config and run in parallel.
+
+### 3. Configuration
 
 Example `configs/defaults.yaml`:
 

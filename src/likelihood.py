@@ -7,31 +7,40 @@ from model import gaussian_model
 import numpy as np
 
 # Define likelihood functions
-def log_likelihood_1(parameters, data, **kwargs): 
+def log_likelihood_1(parameters, data, model_fn=None, **kwargs): 
     """-||out-data||^2"""
-    out = gaussian_model(parameters)
+    if model_fn is None:
+        from model import gaussian_model
+        model_fn = gaussian_model
+    out = model_fn(parameters, **kwargs)
     output_field = out[3]  
     residuals = output_field - data
     return - jnp.sum(residuals ** 2)
 
 
-def log_likelihood_2(parameters, data, noise=0.1, **kwargs):
+def log_likelihood_2(parameters, data, noise=0.1, model_fn=None, **kwargs):
     """Gaussian likelihood with known noise."""
-    out = gaussian_model(parameters)
+    if model_fn is None:
+        from model import gaussian_model
+        model_fn = gaussian_model
+    out = model_fn(parameters, **kwargs)
     output_field = out[3]  
     residuals = output_field - data
     chi2 = jnp.sum(residuals ** 2) / noise ** 2
     norm = data.size * jnp.log(noise)
     return -0.5 * chi2 - norm
 
-def log_likelihood_3(parameters, data, variance=1.0, n_realizations=10, keys=None, **kwargs):
+def log_likelihood_3(parameters, data, variance=1.0, n_realizations=10, keys=None, model_fn=None, **kwargs):
     """Averaged likelihood over several model realizations (Monte Carlo)."""
+    if model_fn is None:
+        from model import gaussian_model
+        model_fn = gaussian_model
     total_ll = 0
     n_points = jnp.size(data)
     log_norm = -0.5 * n_points * np.log(2 * np.pi * variance)
     for i in range(n_realizations):
         key = jax.random.PRNGKey(i) if keys is None else keys[i]
-        model_output = gaussian_model(parameters, key=key)
+        model_output = model_fn(parameters, key=key, **kwargs)
         model_output = model_output[3]  # Assuming output_field is at index 
         sq_errors = jnp.sum((model_output - data) ** 2)
         realization_ll = -0.5 * sq_errors / variance + log_norm
@@ -67,7 +76,7 @@ PRIOR_REGISTRY = {
 }
 
 # Get log posterior function
-def get_log_posterior(likelihood_type, data, prior_params=None, prior_type="gaussian", **likelihood_kwargs):
+def get_log_posterior(likelihood_type, data, prior_params=None, prior_type="gaussian", model_fn=None, **likelihood_kwargs):
     """
     Returns a function log_posterior(params_dict) that you can plug into BlackJax.
     prior_type: string key for prior, e.g. "gaussian", "uniform"
@@ -82,11 +91,11 @@ def get_log_posterior(likelihood_type, data, prior_params=None, prior_type="gaus
 
     # Choose likelihood
     if likelihood_type == "ll1":
-        likelihood_fn = lambda params: log_likelihood_1(params, data, **likelihood_kwargs)
+        likelihood_fn = lambda params: log_likelihood_1(params, data, model_fn=model_fn, **likelihood_kwargs)
     elif likelihood_type == "ll2":
-        likelihood_fn = lambda params: log_likelihood_2(params, data, **likelihood_kwargs)
+        likelihood_fn = lambda params: log_likelihood_2(params, data, model_fn=model_fn, **likelihood_kwargs)
     elif likelihood_type == "ll3":
-        likelihood_fn = lambda params: log_likelihood_3(params, data, **likelihood_kwargs)
+        likelihood_fn = lambda params: log_likelihood_3(params, data, model_fn=model_fn, **likelihood_kwargs)
     else:
         raise ValueError(f"Unknown likelihood_type: {likelihood_type}")
 

@@ -1,0 +1,5 @@
+# Ignore results directory
+results/
+
+# Ignore upload instructions file
+UPLOAD_INSTRUCTIONS.txt
