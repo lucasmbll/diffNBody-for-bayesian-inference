@@ -6,6 +6,7 @@ import numpy as np
 
 def inference_loop(rng_key, kernel, initial_state, num_samples, progress_bar=False):
     if not progress_bar:
+        @jax.jit
         def one_step(state, rng_key):
             state, _ = kernel(rng_key, state)
             return state, state

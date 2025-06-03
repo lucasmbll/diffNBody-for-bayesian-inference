@@ -3,3 +3,6 @@ results/
 
 # Ignore upload instructions file
 UPLOAD_INSTRUCTIONS.txt
+
+# Ignore Python bytecode files
+__pycache__/

@@ -35,8 +35,8 @@ def main(config_path):
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
 
-    progress_bar = config.get("progress_bar", True)
-    do_sampling = config.get("do_sampling", True)
+    progress_bar = config.get("progress_bar", False)
+    do_sampling = config.get("do_sampling", False)
 
     # --- Output directory logic ---
     now_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -48,7 +48,8 @@ def main(config_path):
     os.makedirs(base_dir, exist_ok=True)
 
     # --- Model selection ---
-    model_type = config.get("model_type", "gaussian")  # Default to "gaussian"
+    model_params = config["model_params"]
+    model_type = model_params.get("model_type", "gaussian")  # Default to "gaussian"
     model_registry = {
         "gaussian": gaussian_model,
         "gaussian_2blobs": gaussian_2blobs,
@@ -58,23 +59,21 @@ def main(config_path):
         raise ValueError(f"Unknown model_type: {model_type}. Available: {list(model_registry.keys())}")
     model_fn = model_registry[model_type]
 
-    # --- Generate data using model and data_params ---
+    # --- Generate data using model and model_params ---
     print(f"Generating mock data using {model_type}_model...")
-    data_params = config["data_params"]
     # Extract parameters for the selected model
-    params = data_params.get("params", None)
+    params = model_params.get("params", None)
     if params is None:
-        # Fallback for backward compatibility: try old keys
-        params = [data_params[k] for k in data_params if k in ("sigma", "mean", "vel_sigma")]
+        raise ValueError("Model parameters 'params' must be specified in the configuration file.")
     params = jnp.array(params)
-    n_part = data_params.get("n_part", 1000)
-    G = data_params.get("G", 5.0)
-    length = data_params.get("length", 64)
-    softening = data_params.get("softening", 0.1)
-    t_f = data_params.get("t_f", 1.0)
-    dt = data_params.get("dt", 0.5)
+    n_part = model_params.get("n_part", 1000)
+    G = model_params.get("G", 5.0)
+    length = model_params.get("length", 64)
+    softening = model_params.get("softening", 0.1)
+    t_f = model_params.get("t_f", 1.0)
+    dt = model_params.get("dt", 0.5)
     # Optionally: allow for random seed
-    data_seed = data_params.get("data_seed", 0)
+    data_seed = model_params.get("data_seed", 0)
     data_key = jax.random.PRNGKey(data_seed)
     # Run model to generate mock data (only the output field is needed)
     input_field, init_pos, final_pos, output_field, sol = model_fn(
@@ -131,7 +130,7 @@ def main(config_path):
 
     # 3. Initialisation des paramètres
     initial_position = config["initial_position"]
-    rng_key = jax.random.PRNGKey(config.get("random_seed", 12345))
+    rng_key = jax.random.PRNGKey(config.get("sampling_seed", 12345))
     num_samples = config.get("num_samples", 5000)
     
     # 4. Lancer le sampler
@@ -171,6 +170,13 @@ def main(config_path):
         "mean": samples[:, 1],
         "vel_sigma": samples[:, 2],
     }
+    
+    # Extract true parameter values for plotting
+    true_params = model_params.get("params", [10.0, 30.0, 1.0])
+    sigma = true_params[0] if len(true_params) > 0 else 10.0
+    mean = true_params[1] if len(true_params) > 1 else 30.0
+    vel_sigma = true_params[2] if len(true_params) > 2 else 1.0
+    
     # Trace plots
     fig, _ = plot_trace_subplots(
         samples_dict,
@@ -188,7 +194,10 @@ def main(config_path):
     fig.savefig(os.path.join(base_dir, "corner_sampling.png"))
 
     # 5. Sauvegarde des résultats
-    np.savez(os.path.join(base_dir, "samples.npz"), **{k: np.array(v) for k, v in samples.items()})
+    if isinstance(samples, dict):
+        np.savez(os.path.join(base_dir, "samples.npz"), **{k: np.array(v) for k, v in samples.items()})
+    else:
+        np.savez(os.path.join(base_dir, "samples.npz"), samples=np.array(samples))
     print(f"Results saved to {os.path.join(base_dir, 'samples.npz')}")
 
 if __name__ == "__main__":

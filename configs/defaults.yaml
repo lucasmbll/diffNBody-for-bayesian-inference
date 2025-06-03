@@ -1,14 +1,39 @@
 # defaults.yaml
 # Template for all experiments. Copy and adapt as needed.
 
-# --- MODEL SELECTION ---
-model_type: gaussian   # Options: "gaussian" or "gaussian_2blobs"
+# --- HARDWARE/CLUSTER SETTINGS ---
+cuda_visible_devices: 1 # GPU index to use (set per experiment if running in parallel)
+
+# --- EXPERIMENT MODE and MISCELLANEOUS ---
 do_sampling: true      # true: run sampling; false: only run simulation and save mock data plots
+progress_bar: false     # Show progress bar during sampling
+
+# --- FORWARD MODEL PARAMETERS ---
+model_params:
+  model_type: gaussian # Options: "gaussian" or "gaussian_2blobs"
+  
+  # For gaussian model:
+  params: [10.0, 30.0, 1.0, 0.0]  # [sigma, mean, vel_sigma, v_circ]
+  
+  # For gaussian_2blobs model, use instead:
+  # params: [10.0, 20.0, 8.0, 40.0, 1.0, 0.0, 0.0]  # [sigma1, mean1, sigma2, mean2, vel_sigma, v_circ1, v_circ2]
+  
+  #General parameters:
+  n_part: 1000        # Number of particles
+  G: 5.0              # Gravitational constant
+  length: 64          # Box size
+  softening: 0.1      # Softening length
+  t_f: 1.0            # Final time
+  dt: 0.5             # Time step
+  data_seed: 0        # Random seed for data generation
 
 # --- LIKELIHOOD SETTINGS ---
 likelihood_type: ll2   # Options: "ll1", "ll2", "ll3"
 likelihood_kwargs: 
-  noise: 0.05          # Used for ll2 (Gaussian likelihood). For ll3, you can add 'variance' and 'n_realizations'
+  # Noise parameter (used for all likelihood types):
+  noise: 0.05         # Standard deviation of instrumental noise
+  # Additional parameters for ll3:
+  n_realizations: 10  # Number of realizations for ll3 (only used if likelihood_type: ll3)
 
 # --- PRIOR SETTINGS ---
 prior_type: gaussian   # Options: "gaussian" or "uniform"
@@ -29,70 +54,22 @@ num_warmup: 1000       # Number of warmup steps (for NUTS)
 inv_mass_matrix: [0.1, 0.5, 0.1]  # For HMC
 step_size: 0.001       # For HMC
 num_integration_steps: 50  # For HMC
-
-# --- HARDWARE/CLUSTER SETTINGS ---
-cuda_visible_devices: 1 # GPU index to use (set per experiment if running in parallel)
-
-# --- MISCELLANEOUS ---
-progress_bar: true     # Show progress bar during sampling
-
-# --- INITIAL POSITION FOR SAMPLER ---
-initial_position:
+sampling_seed: 123456   # Random seed for reproducibility
+initial_position: # Initial position for the sampler
   # For gaussian model:
   sigma: 10.0
   mean: 30.0
   vel_sigma: 1.0
-  v_circ: 0.0         # Only for gaussian model
+  v_circ: 0.0         
+  
   # For gaussian_2blobs model, use instead:
-  # sigma: 10.0
-  # mean: 30.0
+  # sigma1: 10.0
+  # mean1: 30.0
+  # sigma2 : 10.0
+  # mean2: 30.0
   # vel_sigma: 1.0
-  # v_circ1: 0.0      # Only for gaussian_2blobs
-  # v_circ2: 0.0      # Only for gaussian_2blobs
+  # v_circ1: 0.0      
+  # v_circ2: 0.0      
 
-random_seed: 123456   # Random seed for reproducibility
 
-# --- DATA GENERATION PARAMETERS ---
-data_params:
-  # For gaussian model:
-  params: [10.0, 30.0, 1.0, 0.0]  # [sigma, mean, vel_sigma, v_circ]
-  # For gaussian_2blobs model, use instead:
-  # params: [10.0, 20.0, 8.0, 40.0, 1.0, 0.0, 0.0]  # [sigma1, mean1, sigma2, mean2, vel_sigma, v_circ1, v_circ2]
-  n_part: 1000        # Number of particles
-  G: 5.0              # Gravitational constant
-  length: 64          # Box size
-  softening: 0.1      # Softening length
-  t_f: 1.0            # Final time
-  dt: 0.5             # Time step
-  data_seed: 0        # Random seed for data generation
 
-# --- EXAMPLES FOR QUICK COPY/PASTE ---
-
-# Example for gaussian model:
-# model_type: gaussian
-# data_params:
-#   params: [10.0, 30.0, 1.0, 0.0]  # [sigma, mean, vel_sigma, v_circ]
-#   n_part: 1000
-#   G: 5.0
-#   length: 64
-#   softening: 0.1
-#   t_f: 1.0
-#   dt: 0.5
-#   data_seed: 0
-
-# Example for gaussian_2blobs model:
-# model_type: gaussian_2blobs
-# data_params:
-#   params: [10.0, 20.0, 8.0, 40.0, 1.0, 0.0, 0.0]  # [sigma1, mean1, sigma2, mean2, vel_sigma, v_circ1, v_circ2]
-#   n_part: 1000
-#   G: 5.0
-#   length: 64
-#   softening: 0.1
-#   t_f: 1.0
-#   dt: 0.5
-#   data_seed: 0
-
-# --- NOTES ---
-# - For each experiment, copy this file and adapt only the relevant fields.
-# - The output directory and file naming are handled automatically by the code.
-# - For parallel experiments, set different cuda_visible_devices and random_seed.

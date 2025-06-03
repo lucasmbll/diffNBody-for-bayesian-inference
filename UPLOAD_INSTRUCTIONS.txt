@@ -1,0 +1,12 @@
+# 1. Stage all changes in the current folder (nbody-inverse-sampling)
+git add .
+
+# 2. Commit your changes with a message
+git commit -m "Update: parallel multiple experiments, .gitignore, handling of different forward models (one or two blobs) and initial circular velocity"
+
+# 3. Push to your remote repository (e.g., origin, main branch)
+git push origin main
+
+# WARNING: This will overwrite remote changes on main!
+git push --force origin main
+

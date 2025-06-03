@@ -7,45 +7,48 @@ from model import gaussian_model
 import numpy as np
 
 # Define likelihood functions
-def log_likelihood_1(parameters, data, model_fn=None, **kwargs): 
-    """-||out-data||^2"""
-    if model_fn is None:
-        from model import gaussian_model
-        model_fn = gaussian_model
+def log_likelihood_1(parameters, data, noise, model_fn, **kwargs):
+    """
+    -1/2σ² ||out-data||^2 - n/2 log(2πσ²)
+    """
     out = model_fn(parameters, **kwargs)
-    output_field = out[3]  
+    output_field = out[3]
     residuals = output_field - data
-    return - jnp.sum(residuals ** 2)
-
-
-def log_likelihood_2(parameters, data, noise=0.1, model_fn=None, **kwargs):
-    """Gaussian likelihood with known noise."""
-    if model_fn is None:
-        from model import gaussian_model
-        model_fn = gaussian_model
-    out = model_fn(parameters, **kwargs)
-    output_field = out[3]  
-    residuals = output_field - data
-    chi2 = jnp.sum(residuals ** 2) / noise ** 2
-    norm = data.size * jnp.log(noise)
+    n_points = data.size
+    chi2 = jnp.sum(residuals ** 2) / noise**2
+    norm = n_points * jnp.log(noise) + 0.5 * n_points * jnp.log(2 * np.pi)
     return -0.5 * chi2 - norm
 
-def log_likelihood_3(parameters, data, variance=1.0, n_realizations=10, keys=None, model_fn=None, **kwargs):
-    """Averaged likelihood over several model realizations (Monte Carlo)."""
-    if model_fn is None:
-        from model import gaussian_model
-        model_fn = gaussian_model
-    total_ll = 0
-    n_points = jnp.size(data)
-    log_norm = -0.5 * n_points * np.log(2 * np.pi * variance)
-    for i in range(n_realizations):
-        key = jax.random.PRNGKey(i) if keys is None else keys[i]
+def log_likelihood_2(parameters, data, noise, model_fn, **kwargs):
+    """
+    Gaussian likelihood with known noise.
+    """
+    out = model_fn(parameters, **kwargs)
+    output_field = out[3]
+    residuals = output_field - data
+    n_points = data.size
+    chi2 = jnp.sum(residuals ** 2) / (noise**2)
+    log_norm = 0.5 * n_points * jnp.log(2 * np.pi * noise**2)
+    return -0.5 * chi2 - log_norm
+
+def log_likelihood_3(parameters, data, noise, n_realizations, model_fn, **kwargs):
+    """
+    Averaged likelihood over several model realizations (Monte Carlo, batched over keys).
+    noise = σ
+    """
+    base_key = kwargs.pop("key", None)
+    if base_key is None:
+        base_key = jax.random.PRNGKey(0)
+    keys = jax.random.split(base_key, n_realizations)
+    def single_ll(key):
         model_output = model_fn(parameters, key=key, **kwargs)
-        model_output = model_output[3]  # Assuming output_field is at index 
+        model_output = model_output[3]  # output_field
         sq_errors = jnp.sum((model_output - data) ** 2)
-        realization_ll = -0.5 * sq_errors / variance + log_norm
-        total_ll += realization_ll
-    return total_ll / n_realizations
+        n_points = jnp.size(data)
+        log_norm = 0.5 * n_points * jnp.log(2 * np.pi * noise**2)
+        return -0.5 * sq_errors / (noise**2) - log_norm
+    batched_ll = jax.vmap(single_ll)(keys)
+    return jnp.mean(batched_ll)
 
 # Define priors
 def gaussian_prior(params_dict, prior_params):
@@ -82,20 +85,25 @@ def get_log_posterior(likelihood_type, data, prior_params=None, prior_type="gaus
     prior_type: string key for prior, e.g. "gaussian", "uniform"
     """
     if prior_params is None:
-        # Defaults for gaussian prior
-        prior_params = dict(
-            sigma=dict(mu=10.0, sigma=0.5),
-            mean=dict(mu=30.0, sigma=0.5),
-            vel_sigma=dict(mu=1.0, sigma=0.1),
-        )
+        raise ValueError("prior_params must be provided.")
 
+    if model_fn is None:
+        raise ValueError("model_fn must be provided.")
+    
+    # Extract noise parameter from likelihood_kwargs - this will be used for all likelihood types
+    noise = likelihood_kwargs.get("noise", 0.05)  # Default noise value if not specified
+    
+    # Filter out noise and other special parameters from kwargs passed to model
+    model_kwargs = {k: v for k, v in likelihood_kwargs.items() if k not in ['noise', 'n_realizations']}
+    
     # Choose likelihood
     if likelihood_type == "ll1":
-        likelihood_fn = lambda params: log_likelihood_1(params, data, model_fn=model_fn, **likelihood_kwargs)
+        likelihood_fn = lambda params: log_likelihood_1(params, data, noise, model_fn=model_fn, **model_kwargs)
     elif likelihood_type == "ll2":
-        likelihood_fn = lambda params: log_likelihood_2(params, data, model_fn=model_fn, **likelihood_kwargs)
+        likelihood_fn = lambda params: log_likelihood_2(params, data, noise, model_fn=model_fn, **model_kwargs)
     elif likelihood_type == "ll3":
-        likelihood_fn = lambda params: log_likelihood_3(params, data, model_fn=model_fn, **likelihood_kwargs)
+        n_realizations = likelihood_kwargs.get("n_realizations", 10)
+        likelihood_fn = lambda params: log_likelihood_3(params, data, noise, n_realizations, model_fn=model_fn, **model_kwargs)
     else:
         raise ValueError(f"Unknown likelihood_type: {likelihood_type}")
 

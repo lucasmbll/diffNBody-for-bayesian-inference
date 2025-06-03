@@ -26,12 +26,12 @@ def make_diffrax_ode(softening, G, length):
 
 def gaussian_model(
     parameters,
-    n_part=1000,
-    G=5.0,
-    length=64,
-    softening=0.1,
-    t_f=1.0,
-    dt=0.5,
+    n_part,
+    G,
+    length,
+    softening,
+    t_f,
+    dt,
     ts=None,
     key=None
 ):
@@ -51,12 +51,15 @@ def gaussian_model(
     Returns:
         output_field: jnp.array, density field after simulation
     """
-    # Unpack parameters
+
     if len(parameters) == 3:
         sigma, mean, vel_sigma = parameters
         v_circ = 0.0
-    else:
+    elif len(parameters) == 4:
         sigma, mean, vel_sigma, v_circ = parameters
+    else :
+        raise ValueError("Expected at least 3 parameters: [sigma, mean, vel_sigma, optional: v_circ]")
+    
     grid_shape = (length, length, length)
 
     # Random keys for positions/velocities (if key is None, use default)
@@ -100,12 +103,12 @@ def gaussian_model(
 
 def gaussian_2blobs(
     parameters,
-    n_part=1000,
-    G=5.0,
-    length=64,
-    softening=0.1,
-    t_f=1.0,
-    dt=0.5,
+    n_part,
+    G,
+    length,
+    softening,
+    t_f,
+    dt,
     ts=None,
     key=None
 ):
@@ -121,8 +124,10 @@ def gaussian_2blobs(
         sigma1, mean1, sigma2, mean2, vel_sigma = parameters
         v_circ1 = 0.0
         v_circ2 = 0.0
-    else:
+    elif len(parameters) == 7:
         sigma1, mean1, sigma2, mean2, vel_sigma, v_circ1, v_circ2 = parameters
+    else:
+        raise ValueError("Expected 5 or 7 parameters: [sigma1, mean1, sigma2, mean2, vel_sigma] or [sigma1, mean1, sigma2, mean2, vel_sigma, v_circ1, v_circ2]")
     grid_shape = (length, length, length)
     if key is None:
         key = jax.random.PRNGKey(0)
