@@ -4,11 +4,17 @@ A differentiable pipeline for N-body gravitational simulations with JAX and Blac
 
 ## Features
 
-- **Forward modeling** of particle dynamics using [JAX](https://github.com/jax-ml/jax) and [Diffrax](https://github.com/patrick-kidger/diffrax).
-- **Mock data generation** with customizable initial conditions (Gaussian or others).
-- **Inverse inference**: recover initial conditions (parameters) from simulated observations using gradient-based MCMC (NUTS/HMC) with [BlackJAX](https://github.com/blackjax-devs/blackjax).
-- Modular: easily swap models, likelihoods, priors, or sampling methods.
-- GPU acceleration out of the box.
+- **Forward modeling** of particle dynamics using [JAX](https://github.com/jax-ml/jax) and [Diffrax](https://github.com/patrick-kidger/diffrax)
+- **Multiple model types**: Gaussian blobs and dual Gaussian blobs initial conditions
+- **Density field scaling**: Log, sqrt, normalization, standardization, and power scaling options
+- **Velocity configurations**: Random + circular or pure circular velocity initialization
+- **Mock data generation** with customizable initial conditions and comprehensive visualization
+- **Inverse inference**: Recover initial conditions from simulated observations using gradient-based MCMC (NUTS/HMC) with [BlackJAX](https://github.com/blackjax-devs/blackjax)
+- **Flexible likelihood functions**: Standard Gaussian (ll1) and Monte Carlo averaged (ll2)
+- **Multiple prior distributions**: Gaussian and uniform priors with extensible framework
+- **Comprehensive plotting**: Density fields, particle trajectories, energy evolution, velocity distributions, MCMC traces, and corner plots
+- **Video generation**: Create animated visualizations of particle evolution
+- **GPU acceleration** out of the box
 
 ## Project Structure
 
@@ -138,6 +144,81 @@ data_params:
   # Add other model parameters as needed
 
 ```
+## Extending the Framework
+
+### Adding New Priors
+
+To add a new prior distribution, follow these steps:
+
+#### 1. Define the Prior Function
+
+Add your prior function to `src/likelihood.py`:
+
+```python
+def exponential_prior(params_dict, prior_params):
+    """
+    Example: Exponential prior for all parameters
+    """
+    sigma = params_dict["sigma"]
+    mean = params_dict["mean"]
+    vel_sigma = params_dict["vel_sigma"]
+    
+    # Each param should have a 'rate' parameter in prior_params
+    p_sigma = stats.expon.logpdf(sigma, scale=1/prior_params["sigma"]["rate"])
+    p_mean = stats.expon.logpdf(mean, scale=1/prior_params["mean"]["rate"])
+    p_vel = stats.expon.logpdf(vel_sigma, scale=1/prior_params["vel_sigma"]["rate"])
+    
+    return p_sigma + p_mean + p_vel
+
+def beta_prior(params_dict, prior_params):
+    """
+    Example: Beta prior (parameters must be scaled to [0,1])
+    """
+    # Assume parameters are already scaled to [0,1] range
+    sigma = params_dict["sigma"]
+    mean = params_dict["mean"] 
+    vel_sigma = params_dict["vel_sigma"]
+    
+    p_sigma = stats.beta.logpdf(sigma, prior_params["sigma"]["alpha"], prior_params["sigma"]["beta"])
+    p_mean = stats.beta.logpdf(mean, prior_params["mean"]["alpha"], prior_params["mean"]["beta"])
+    p_vel = stats.beta.logpdf(vel_sigma, prior_params["vel_sigma"]["alpha"], prior_params["vel_sigma"]["beta"])
+    
+    return p_sigma + p_mean + p_vel
+```
+
+#### 2. Register the Prior
+
+Add your new prior to the `PRIOR_REGISTRY` in `src/likelihood.py`:
+
+```python
+PRIOR_REGISTRY = {
+    "gaussian": gaussian_prior,
+    "uniform": uniform_prior,
+    "exponential": exponential_prior,  # Add your new prior here
+    "beta": beta_prior,                # Add another example
+    # Add more priors here as needed
+}
+```
+
+#### 3. Update Configuration
+
+Use your new prior in your YAML config file:
+
+```yaml
+prior_type: exponential   # Use your new prior
+
+prior_params:
+  # For exponential prior:
+  sigma: {rate: 0.1}        # rate parameter for exponential distribution
+  mean: {rate: 0.033}       # 1/30 ≈ 0.033 for mean around 30
+  vel_sigma: {rate: 1.0}
+  
+  # Or for beta prior:
+  # sigma: {alpha: 2.0, beta: 5.0}
+  # mean: {alpha: 3.0, beta: 2.0}
+  # vel_sigma: {alpha: 2.0, beta: 2.0}
+```
+
 
 ## Code Structure Overview
 

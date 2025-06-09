@@ -1,0 +1,89 @@
+# defaults.yaml
+# Template for all experiments. Copy and adapt as needed.
+
+# --- HARDWARE/CLUSTER SETTINGS ---
+cuda_visible_devices: 4 # GPU index to use
+
+# --- EXPERIMENT MODE and MISCELLANEOUS ---
+mode: sampling      # true: run sampling; false: only run simulation and save mock data plots
+progress_bar: false     # Show progress bar during sampling
+
+# --- PLOT PARAMETERS ---
+plot_timesteps: 10      # Number of timesteps to plot in all_timesteps plot (default: 10)
+enable_energy_tracking: false  # Calculate and plot energy evolution (can slow computation, disabled for sampling)
+
+# --- FORWARD MODEL PARAMETERS ---
+model_params:
+  model_type: gaussian # Options: "gaussian" or "gaussian_2blobs"
+  
+  # For gaussian model:
+  params: [10.0, 30.0, 1.0]  # [sigma, mean, vel_sigma]
+  random_vel: true  # Whether to add random velocity component (true: random + circular, false: pure circular)
+  
+  # For gaussian_2blobs model, use instead:
+  # params: [10.0, 20.0, 8.0, 40.0, 1.0]  # [sigma1, mean1, sigma2, mean2, vel_sigma]
+  # random_vel: true  # Whether to add random velocity component
+  
+  # Density field scaling options:
+  density_scaling: "log"  # Options: "none", "log", "sqrt", "normalize", "standardize", "power"
+  scaling_kwargs:  # Additional parameters for scaling
+    log_offset: 1.0e-8    # Offset for log scaling (prevents log(0)) - use scientific notation
+    power: 0.5          # Exponent for power scaling
+  
+  #General parameters:
+  n_part: 1000        # Number of particles
+  G: 5.0              # Gravitational constant
+  length: 64          # Box size
+  softening: 0.1      # Softening length
+  t_f: 1.0            # Final time
+  dt: 0.2             # Time step
+  m_part: 1.0        # Particle mass
+  data_seed: 0        # Random seed for data generation
+
+# --- LIKELIHOOD SETTINGS ---
+likelihood_type: ll1   # Options: "ll1", "ll2"
+likelihood_kwargs: 
+  # Noise parameter (used for all likelihood types):
+  noise: 1         # Standard deviation of instrumental noise
+  # Additional parameters for ll2:
+  #n_realizations: 10  # Number of realizations for ll2 (only used if likelihood_type: ll2)
+
+# --- PRIOR SETTINGS ---
+prior_type: gaussian   # Options: "gaussian" or "uniform"
+prior_params:
+  # For gaussian prior:
+  sigma: {mu: 10.0, sigma: 1}        
+  mean: {mu: 30.0, sigma: 5}
+  vel_sigma: {mu: 1.0, sigma: 0.1}
+  # For uniform prior (uncomment and use if prior_type: uniform):
+  # sigma: {low: 8.0, high: 12.0}
+  # mean: {low: 28.0, high: 32.0}
+  # vel_sigma: {low: 0.8, high: 1.2}
+
+# --- SAMPLER SETTINGS ---
+sampler: hmc           # Options: "hmc" or "nuts"
+num_samples: 5000      # Number of MCMC samples to draw
+sampling_seed: 123456   # Random seed for reproducibility
+initial_position: # Initial position for the sampler
+  # For gaussian model:
+  sigma: 10.0
+  mean: 30.0
+  vel_sigma: 1.0  # Only used if random_vel=True
+  # For 2 blobs gaussian model:
+  # sigma1: 10.0
+  # mean1: 30.0
+  # sigma2 : 10.0
+  # mean2: 30.0
+  # vel_sigma: 1.0  # Only used if random_vel=True
+# For NUTS:
+num_warmup: 1000       # Number of warmup steps 
+# For HMC:
+step_size: 0.02       
+num_integration_steps: 40
+inv_mass_matrix: [1, 0.04, 100.0]  # Will be automatically adjusted to [1, 0.04] if random_vel=False
+
+
+
+
+
+

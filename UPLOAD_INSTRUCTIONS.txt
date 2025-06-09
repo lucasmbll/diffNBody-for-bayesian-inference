@@ -1,8 +1,10 @@
+# GitHub instruction
+
 # 1. Stage all changes in the current folder (nbody-inverse-sampling)
 git add .
 
 # 2. Commit your changes with a message
-git commit -m "Update: parallel multiple experiments, .gitignore, handling of different forward models (one or two blobs) and initial circular velocity"
+git commit -m "Update: Noise added to likelihoods, code corrections"
 
 # 3. Push to your remote repository (e.g., origin, main branch)
 git push origin main
@@ -10,3 +12,24 @@ git push origin main
 # WARNING: This will overwrite remote changes on main!
 git push --force origin main
 
+# Use tmux 
+
+tmux new -s sim1blob
+tmux new -s sim2blobs
+tmux new -s sim3
+s
+leave : Ctrl + b (hold Ctrl, press b, release both), then press d
+
+re attach : tmux attach -t mysession OR IF ONLY ONE SESSION tmux a
+
+list all sessions : tmux ls
+
+kill a session : tmux kill-session -t mysession
+
+
+python src/run_experiments.py --config configs/default_sim.yaml
+
+Current sessions name :
+sampling
+ tmux attach -t sampling_nuts
+sampling_nuts

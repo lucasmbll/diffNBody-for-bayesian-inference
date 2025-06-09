@@ -6,3 +6,7 @@ UPLOAD_INSTRUCTIONS.txt
 
 # Ignore Python bytecode files
 __pycache__/
+
+# Ignore old configs
+configs/old_configs/
+

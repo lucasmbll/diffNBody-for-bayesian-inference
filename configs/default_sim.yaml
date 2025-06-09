@@ -1,0 +1,51 @@
+# defaults.yaml
+# Template for all experiments. Copy and adapt as needed.
+
+# --- HARDWARE/CLUSTER SETTINGS ---
+cuda_visible_devices: 5 # GPU index to use (set per experiment if running in parallel)
+
+# --- EXPERIMENT MODE and MISCELLANEOUS ---
+mode: sim      # Experiment mode (options: "sim", "sampling")
+
+# --- VIDEO SETTINGS ---
+generate_video: false     # Generate simulation video (default: false)
+video_fps: 20           # Video frames per second (default: 10)
+video_dpi: 100          # Video resolution DPI (default: 100)
+
+# --- PLOT SETTINGS ---
+num_trajectories: 5      # Number of particle trajectories to plot (default: 10)
+zoom_for_trajectories: false # Zoom in on trajectories (default: true)
+plot_timesteps: 10      # Number of timesteps to plot in all_timesteps plot (default: 10)
+enable_energy_tracking: true  # Calculate and plot energy evolution (can slow computation for large sims)
+
+# --- FORWARD MODEL PARAMETERS ---
+model_params:
+  model_type: gaussian # Options: "gaussian" or "gaussian_2blobs"
+  
+  # For gaussian model:
+  params: [10.0, 30.0, 1.0]  # [sigma, mean, vel_sigma]
+  random_vel: true  # Whether to add random velocity component (true: random + circular, false: pure circular)
+  
+  # For 2 blobs gaussian model:
+  # params: [10.0, 20.0, 8.0, 40.0, 1.0]  # [sigma1, mean1, sigma2, mean2, vel_sigma]
+  # random_vel: true  # Whether to add random velocity component
+  
+  # Density field scaling options:
+  density_scaling: "power"  # Options: "none", "log", "sqrt", "normalize", "standardize", "power"
+  scaling_kwargs:  # Additional parameters for scaling
+    log_offset: 1.0e-8    # Offset for log scaling (prevents log(0)) - use scientific notation
+    power: 0.5          # Exponent for power scaling
+  
+  #General parameters:
+  n_part: 3000        # TOTAL Number of particles
+  G: 5.0              # Gravitational constant
+  length: 64          # Box size
+  softening: 0.1      # Softening length
+  t_f: 5.0            # Final time
+  dt: 0.001             # Time step
+  m_part: 1.0        # Particle mass
+  data_seed: 0        # Random seed for data generation
+
+
+
+
