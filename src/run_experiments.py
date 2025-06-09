@@ -126,20 +126,49 @@ def main(config_path):
         fig.savefig(os.path.join(base_dir, "density_fields_and_positions.png"))
         print("Density fields and positions plots saved successfully")
         
+        # Pre-compute energy if needed for any plots
+        enable_energy_tracking = config.get("enable_energy_tracking", True)
+        energy_data = None
+        
+        if enable_energy_tracking:
+            print("Pre-calculating energy for all timesteps...")
+            from plotting import calculate_energy
+            all_times = []
+            all_ke = []
+            all_pe = []
+            all_te = []
+            
+            for i in range(len(sol.ts)):
+                pos_t = sol.ys[i, 0]
+                vel_t = sol.ys[i, 1]
+                ke, pe, te = calculate_energy(pos_t, vel_t, G, length, softening, m_part)
+                all_times.append(sol.ts[i])
+                all_ke.append(ke)
+                all_pe.append(pe)
+                all_te.append(te)
+            
+            energy_data = {
+                'times': jnp.array(all_times),
+                'kinetic': jnp.array(all_ke),
+                'potential': jnp.array(all_pe),
+                'total': jnp.array(all_te)
+            }
+            print("Energy calculation completed.")
+        
         print("Creating timesteps plot...")
         # 2. All timesteps
-        plot_timesteps_num = config.get("plot_timesteps", 10)  # Default to 10 if not specified
-        enable_energy_tracking = config.get("enable_energy_tracking", True)  # Default to True
+        plot_timesteps_num = config.get("plot_timesteps", 10)
         fig, _ = plot_timesteps(sol, length, G, t_f, dt, n_part, num_timesteps=plot_timesteps_num, 
                                random_vel=random_vel, softening=softening, m_part=m_part,
-                               enable_energy_tracking=enable_energy_tracking, density_scaling=density_scaling)
+                               enable_energy_tracking=enable_energy_tracking, density_scaling=density_scaling,
+                               energy_data=energy_data)
         fig.savefig(os.path.join(base_dir, "timesteps.png"))
         print("Timesteps plot saved successfully")
         
         print("Creating trajectories plot...")
         # 3. Trajectories
-        num_trajectories = config.get("num_trajectories", 10)  # Default to 10 if not specified
-        zoom = config.get("zoom", True)  # Default to False if not specified
+        num_trajectories = config.get("num_trajectories", 10)
+        zoom = config.get("zoom", True)
         fig = plot_trajectories(sol, G, t_f, dt, length, n_part, num_trajectories=num_trajectories, zoom=zoom, random_vel=random_vel)
         fig.savefig(os.path.join(base_dir, "trajectories.png"))
         print("Trajectories plot saved successfully")
@@ -157,13 +186,14 @@ def main(config_path):
             try:
                 from plotting import create_video
                 video_path = os.path.join(base_dir, "simulation_video.mp4")
-                fps = config.get("video_fps", 10)  # Allow configurable FPS
-                dpi = config.get("video_dpi", 100)  # Allow configurable DPI
+                fps = config.get("video_fps", 10)
+                dpi = config.get("video_dpi", 100)
                 
                 create_video(sol, length, G, t_f, dt, n_part, 
-                            save_path=video_path, fps=fps, dpi=dpi, random_vel=random_vel,
+                            save_path=video_path, fps=fps, dpi=dpi, density_scaling=density_scaling, random_vel=random_vel,
                             softening=softening, m_part=m_part,
-                            enable_energy_tracking=enable_energy_tracking)
+                            enable_energy_tracking=enable_energy_tracking,
+                            energy_data=energy_data)
                 print("Simulation video saved successfully")
             except ImportError as e:
                 print(f"Warning: Could not create video. Missing dependencies: {e}")

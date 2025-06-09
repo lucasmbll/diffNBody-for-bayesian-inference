@@ -4,7 +4,7 @@
 git add .
 
 # 2. Commit your changes with a message
-git commit -m "Update: Noise added to likelihoods, code corrections"
+git commit -m "Update: Circular velocity enclosed mass, video generation, jupyter notebook report, energy tracking, density scaling"
 
 # 3. Push to your remote repository (e.g., origin, main branch)
 git push origin main

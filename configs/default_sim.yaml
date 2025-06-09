@@ -8,9 +8,9 @@ cuda_visible_devices: 5 # GPU index to use (set per experiment if running in par
 mode: sim      # Experiment mode (options: "sim", "sampling")
 
 # --- VIDEO SETTINGS ---
-generate_video: false     # Generate simulation video (default: false)
-video_fps: 20           # Video frames per second (default: 10)
-video_dpi: 100          # Video resolution DPI (default: 100)
+generate_video: true     # Generate simulation video (default: false)
+video_fps: 50           # Video frames per second (default: 10)
+video_dpi: 200          # Video resolution DPI (default: 100)
 
 # --- PLOT SETTINGS ---
 num_trajectories: 5      # Number of particle trajectories to plot (default: 10)
@@ -24,14 +24,14 @@ model_params:
   
   # For gaussian model:
   params: [10.0, 30.0, 1.0]  # [sigma, mean, vel_sigma]
-  random_vel: true  # Whether to add random velocity component (true: random + circular, false: pure circular)
+  random_vel: false  # Whether to add random velocity component (true: random + circular, false: pure circular)
   
   # For 2 blobs gaussian model:
   # params: [10.0, 20.0, 8.0, 40.0, 1.0]  # [sigma1, mean1, sigma2, mean2, vel_sigma]
   # random_vel: true  # Whether to add random velocity component
   
   # Density field scaling options:
-  density_scaling: "power"  # Options: "none", "log", "sqrt", "normalize", "standardize", "power"
+  density_scaling: "log"  # Options: "none", "log", "sqrt", "normalize", "standardize", "power"
   scaling_kwargs:  # Additional parameters for scaling
     log_offset: 1.0e-8    # Offset for log scaling (prevents log(0)) - use scientific notation
     power: 0.5          # Exponent for power scaling

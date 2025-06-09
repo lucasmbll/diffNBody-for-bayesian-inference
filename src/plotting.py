@@ -61,7 +61,8 @@ def plot_density_fields_and_positions(G, tf, dt, length, n_part, input_field, in
     param_info = f'G={G}, tf={tf}, dt={dt}, L={length}, N={n_part}, random_vel={random_vel}, density_scaling={density_scaling}'
 
     title += f'\n{param_info}'
-    fig.suptitle(title, y=1.0, fontsize=22)
+    # Place suptitle at the very top
+    fig.suptitle(title, y=0.98, fontsize=22)
 
     # Determine colorbar label based on scaling
     if density_scaling == "log":
@@ -77,23 +78,39 @@ def plot_density_fields_and_positions(G, tf, dt, length, n_part, input_field, in
     else:
         cbar_label = "Density"
 
+    # Helper for axis limits
+    limits = [0, length]
+
     # First row: Input density field (3 plots)
     ax1 = fig.add_subplot(gs[0, 0])
-    im1 = ax1.imshow(jnp.sum(input_field, axis=0), cmap='inferno')
+    im1 = ax1.imshow(jnp.sum(input_field, axis=0), cmap='inferno', origin='lower',
+                     extent=[0, length, 0, length], aspect='auto')
     ax1.set_title(f'Input {cbar_label} Field (Projection X-Y)')
+    ax1.set_xlabel('X')
+    ax1.set_ylabel('Y')
+    ax1.set_xlim(limits)
+    ax1.set_ylim(limits)
     fig.colorbar(im1, ax=ax1, orientation='vertical')
 
     ax2 = fig.add_subplot(gs[0, 1])
-    im2 = ax2.imshow(jnp.sum(input_field, axis=1), cmap='inferno')
+    im2 = ax2.imshow(jnp.sum(input_field, axis=1), cmap='inferno', origin='lower',
+                     extent=[0, length, 0, length], aspect='auto')
     ax2.set_title(f'Input {cbar_label} Field (Projection X-Z)')
+    ax2.set_xlabel('X')
+    ax2.set_ylabel('Z')
+    ax2.set_xlim(limits)
+    ax2.set_ylim(limits)
     fig.colorbar(im2, ax=ax2, orientation='vertical')
 
     ax3 = fig.add_subplot(gs[0, 2])
-    im3 = ax3.imshow(jnp.sum(input_field, axis=2), cmap='inferno')
+    im3 = ax3.imshow(jnp.sum(input_field, axis=2), cmap='inferno', origin='lower',
+                     extent=[0, length, 0, length], aspect='auto')
     ax3.set_title(f'Input {cbar_label} Field (Projection Y-Z)')
+    ax3.set_xlabel('Y')
+    ax3.set_ylabel('Z')
+    ax3.set_xlim(limits)
+    ax3.set_ylim(limits)
     fig.colorbar(im3, ax=ax3, orientation='vertical')
-
-    # Empty plot in top-right corner
     fig.add_subplot(gs[0, 3]).set_visible(False)
 
     # Second row: Initial positions (4 plots)
@@ -101,63 +118,94 @@ def plot_density_fields_and_positions(G, tf, dt, length, n_part, input_field, in
     ax4.scatter(init_pos[:, 0], init_pos[:, 1], init_pos[:, 2], c='r', marker='o', alpha=0.5, s=1)
     ax4.set_title('Initial Particle Positions (3D)')
     ax4.set_xlabel('X'); ax4.set_ylabel('Y'); ax4.set_zlabel('Z')
+    ax4.set_xlim(limits)
+    ax4.set_ylim(limits)
+    ax4.set_zlim(limits)
 
     ax5 = fig.add_subplot(gs[1, 1])
     ax5.scatter(init_pos[:, 0], init_pos[:, 1], c='r', marker='o', alpha=0.5, s=1)
     ax5.set_title('Initial Positions (X-Y)')
     ax5.set_xlabel('X'); ax5.set_ylabel('Y')
+    ax5.set_xlim(limits)
+    ax5.set_ylim(limits)
 
     ax6 = fig.add_subplot(gs[1, 2])
     ax6.scatter(init_pos[:, 0], init_pos[:, 2], c='r', marker='o', alpha=0.5, s=1)
     ax6.set_title('Initial Positions (X-Z)')
     ax6.set_xlabel('X'); ax6.set_ylabel('Z')
+    ax6.set_xlim(limits)
+    ax6.set_ylim(limits)
 
     ax7 = fig.add_subplot(gs[1, 3])
     ax7.scatter(init_pos[:, 1], init_pos[:, 2], c='r', marker='o', alpha=0.5, s=1)
     ax7.set_title('Initial Positions (Y-Z)')
     ax7.set_xlabel('Y'); ax7.set_ylabel('Z')
+    ax7.set_xlim(limits)
+    ax7.set_ylim(limits)
 
     # Third row: Final positions (4 plots)
     ax8 = fig.add_subplot(gs[2, 0], projection='3d')
     ax8.scatter(final_pos[:, 0], final_pos[:, 1], final_pos[:, 2], c='b', marker='o', alpha=0.5, s=1)
     ax8.set_title('Final Particle Positions (3D)')
     ax8.set_xlabel('X'); ax8.set_ylabel('Y'); ax8.set_zlabel('Z')
+    ax8.set_xlim(limits)
+    ax8.set_ylim(limits)
+    ax8.set_zlim(limits)
 
     ax9 = fig.add_subplot(gs[2, 1])
     ax9.scatter(final_pos[:, 0], final_pos[:, 1], c='b', marker='o', alpha=0.5, s=1)
     ax9.set_title('Final Positions (X-Y)')
     ax9.set_xlabel('X'); ax9.set_ylabel('Y')
+    ax9.set_xlim(limits)
+    ax9.set_ylim(limits)
 
     ax10 = fig.add_subplot(gs[2, 2])
     ax10.scatter(final_pos[:, 0], final_pos[:, 2], c='b', marker='o', alpha=0.5, s=1)
     ax10.set_title('Final Positions (X-Z)')
     ax10.set_xlabel('X'); ax10.set_ylabel('Z')
+    ax10.set_xlim(limits)
+    ax10.set_ylim(limits)
 
     ax11 = fig.add_subplot(gs[2, 3])
     ax11.scatter(final_pos[:, 1], final_pos[:, 2], c='b', marker='o', alpha=0.5, s=1)
     ax11.set_title('Final Positions (Y-Z)')
     ax11.set_xlabel('Y'); ax11.set_ylabel('Z')
+    ax11.set_xlim(limits)
+    ax11.set_ylim(limits)
 
     # Fourth row: Output density field (3 plots)
     ax12 = fig.add_subplot(gs[3, 0])
-    im12 = ax12.imshow(jnp.sum(output_field, axis=0), cmap='inferno')
+    im12 = ax12.imshow(jnp.sum(output_field, axis=0), cmap='inferno', origin='lower',
+                       extent=[0, length, 0, length], aspect='auto')
     ax12.set_title(f'Output {cbar_label} Field (Projection X-Y)')
+    ax12.set_xlabel('X')
+    ax12.set_ylabel('Y')
+    ax12.set_xlim(limits)
+    ax12.set_ylim(limits)
     fig.colorbar(im12, ax=ax12, orientation='vertical')
 
     ax13 = fig.add_subplot(gs[3, 1])
-    im13 = ax13.imshow(jnp.sum(output_field, axis=1), cmap='inferno')
+    im13 = ax13.imshow(jnp.sum(output_field, axis=1), cmap='inferno', origin='lower',
+                       extent=[0, length, 0, length], aspect='auto')
     ax13.set_title(f'Output {cbar_label} Field (Projection X-Z)')
+    ax13.set_xlabel('X')
+    ax13.set_ylabel('Z')
+    ax13.set_xlim(limits)
+    ax13.set_ylim(limits)
     fig.colorbar(im13, ax=ax13, orientation='vertical')
 
     ax14 = fig.add_subplot(gs[3, 2])
-    im14 = ax14.imshow(jnp.sum(output_field, axis=2), cmap='inferno')
+    im14 = ax14.imshow(jnp.sum(output_field, axis=2), cmap='inferno', origin='lower',
+                       extent=[0, length, 0, length], aspect='auto')
     ax14.set_title(f'Output {cbar_label} Field (Projection Y-Z)')
+    ax14.set_xlabel('Y')
+    ax14.set_ylabel('Z')
+    ax14.set_xlim(limits)
+    ax14.set_ylim(limits)
     fig.colorbar(im14, ax=ax14, orientation='vertical')
-
-    # Empty plot in bottom-right corner
     fig.add_subplot(gs[3, 3]).set_visible(False)
 
-    plt.tight_layout()
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
     if save_path:
         fig.savefig(save_path)
     plt.show()
@@ -170,13 +218,14 @@ def plot_timesteps(sol,
                    dt,
                    n_part,
                    random_vel,
-                   softening=0.1,
-                   m_part=1.0,
-                   num_timesteps=10,      # Default to 10 timesteps
-                   s=1,                   # marker size for scatters
+                   softening,
+                   m_part,
+                   num_timesteps,
+                   s=1,
                    cmap='inferno',
-                   enable_energy_tracking=True,  # New parameter to enable/disable energy tracking
-                   density_scaling="none",  # Add density scaling parameter
+                   enable_energy_tracking=True,
+                   density_scaling="none",
+                   energy_data=None,  # Pre-computed energy data
                    save_path=None):
     """
     Parameters
@@ -191,6 +240,8 @@ def plot_timesteps(sol,
         Whether to calculate and plot energy evolution (can be slow for large simulations)
     density_scaling : str
         Type of density scaling applied
+    energy_data : dict, optional
+        Pre-computed energy data with keys 'times', 'kinetic', 'potential', 'total'
     """
     total_timesteps = len(sol.ts)
     
@@ -201,30 +252,37 @@ def plot_timesteps(sol,
         skip = max(1, total_timesteps // num_timesteps)
     
     # How many rows will we draw?
-    steps = sol.ts[::skip]       # time steps to plot
+    steps = sol.ts[::skip]
     nrows = len(steps)
 
-    # Pre-calculate energies only if energy tracking is enabled
+    # Use pre-computed energy data if available, otherwise compute if needed
     all_times = sol.ts
     all_ke = all_pe = all_te = None
     
     if enable_energy_tracking:
-        print("Calculating energies for all timesteps...")
-        all_ke = []
-        all_pe = []
-        all_te = []
-        
-        for i in range(len(sol.ts)):
-            pos_t = sol.ys[i, 0]
-            vel_t = sol.ys[i, 1]
-            ke, pe, te = calculate_energy(pos_t, vel_t, G, boxL, softening, m_part)
-            all_ke.append(ke)
-            all_pe.append(pe)
-            all_te.append(te)
-        
-        all_ke = jnp.array(all_ke)
-        all_pe = jnp.array(all_pe)
-        all_te = jnp.array(all_te)
+        if energy_data is not None:
+            print("Using pre-computed energy data for timesteps plot...")
+            all_times = energy_data['times']
+            all_ke = energy_data['kinetic']
+            all_pe = energy_data['potential']
+            all_te = energy_data['total']
+        else:
+            print("Computing energies for all timesteps (no pre-computed data provided)...")
+            all_ke = []
+            all_pe = []
+            all_te = []
+            
+            for i in range(len(sol.ts)):
+                pos_t = sol.ys[i, 0]
+                vel_t = sol.ys[i, 1]
+                ke, pe, te = calculate_energy(pos_t, vel_t, G, boxL, softening, m_part)
+                all_ke.append(ke)
+                all_pe.append(pe)
+                all_te.append(te)
+            
+            all_ke = jnp.array(all_ke)
+            all_pe = jnp.array(all_pe)
+            all_te = jnp.array(all_te)
 
     # Pre-build the canvas - number of columns depends on energy tracking
     ncols = 5 if enable_energy_tracking else 4
@@ -241,18 +299,13 @@ def plot_timesteps(sol,
     
     param_info += f', Plotting {len(steps)} timesteps'
     title += f'\n{param_info}'
-    fig.suptitle(title, y=1.0, fontsize=22)
+    # Place suptitle at the very top
+    fig.suptitle(title, y=0.96, fontsize=22)
 
     for row, t in enumerate(steps): 
         current_step = row * skip
-        
-        # Check if sol.ys is a tuple (central mass case) or array (first simulation)
-        if isinstance(sol.ys, tuple):
-            pos_t = sol.ys[0][current_step]  # Account for skip when indexing
-            vel_t = sol.ys[1][current_step]
-        else:
-            pos_t = sol.ys[current_step][0]
-            vel_t = sol.ys[current_step][1]
+        pos_t = sol.ys[current_step, 0]
+        vel_t = sol.ys[current_step, 1]
         
         # --- projections ----------------------------------------------------
         axes[row, 0].scatter(pos_t[:, 0], pos_t[:, 1], s=s)
@@ -310,13 +363,11 @@ def plot_timesteps(sol,
             if energy_range > 0:
                 axes[row, 4].set_ylim(energy_min - 0.1*energy_range, energy_max + 0.1*energy_range)
 
-    plt.tight_layout()
+    plt.tight_layout(rect=[0, 0, 1, 0.98])
     if save_path:
         fig.savefig(save_path)
     plt.show()
     return fig, axes
-
-
 
 def plot_trajectories(solution, G, tf, dt, length, n_part, random_vel, num_trajectories=10, figsize=(20, 5), zoom=True, padding=0.1, smooth_window=5):    
     def smooth_trajectory(traj, window):
@@ -346,7 +397,6 @@ def plot_trajectories(solution, G, tf, dt, length, n_part, random_vel, num_traje
 
     # Create parameter info string with v_circ
     param_info = f'G={G}, tf={tf}, dt={dt}, L={length}, N={n_part}, random_vel={random_vel}'
-    
     title = param_info
 
     ax_3d_title = '3D Trajectories'
@@ -451,44 +501,45 @@ def plot_trajectories(solution, G, tf, dt, length, n_part, random_vel, num_traje
     ax_xz.grid(True)
     ax_yz.grid(True)
 
-    fig.suptitle(title, fontsize=16)
+    # Place suptitle at the very top
+    fig.suptitle(title, y=1.02, fontsize=16)
     start_marker = plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='k', markersize=8, label='Start')
     end_marker = plt.Line2D([0], [0], marker='s', color='w', markerfacecolor='k', markersize=8, label='End')
     background_marker = plt.Line2D([0], [0], marker='o', color='lightgray', markersize=8, label='All Particles')
     ax_3d.legend(handles=[start_marker, end_marker, background_marker], loc='upper right')
-    plt.tight_layout()
+    plt.tight_layout(rect=[0, 0, 1, 0.98])
     return fig
 
 
-def plot_velocity_distributions(sol, G, tf, dt, length, n_part, random_vel, save_path=None):
+def plot_velocity_distributions(sol, G, tf, dt, length, n_part, random_vel, save_path=None, quiver_stride=5):
     # Calculate velocity norms for initial and final velocities
     init_vel = sol.ys[0, 1]  # Initial velocities
+    init_pos = sol.ys[0, 0]  # Initial positions
     init_vel_norm = jnp.sqrt(jnp.sum(init_vel**2, axis=1))
     final_vel = sol.ys[-1, 1]  # Final velocities
+    final_pos = sol.ys[-1, 0]  # Final positions
     final_vel_norm = jnp.sqrt(jnp.sum(final_vel**2, axis=1))
 
-    # Create a figure with 2 rows and 4 columns
-    fig, axes = plt.subplots(2, 4, figsize=(20, 10))
+    # Create a figure with 4 rows and 4 columns
+    fig, axes = plt.subplots(4, 4, figsize=(24, 18))
     title = 'Velocity Distribution Comparison with parameters:'
     param_info = f'G={G}, tf={tf}, dt={dt}, L={length}, N={n_part}, random_vel={random_vel}'
     
     title += f'\n{param_info}'
-    fig.suptitle(title, y=1.05, fontsize=22)
+    # Place suptitle at the very top
+    fig.suptitle(title, y=0.98, fontsize=22)
 
-    # First row - Initial velocities
-    # Histogram of velocity magnitudes
+    # First row - Initial velocities (histograms)
     axes[0, 0].hist(init_vel_norm, bins=50, color='blue', alpha=0.7, density=True)
     axes[0, 0].set_xlabel('Velocity Magnitude', fontsize=12)
     axes[0, 0].set_ylabel('Density', fontsize=12)
     axes[0, 0].set_title('Initial Velocity Magnitudes', fontsize=14)
-    axes[0, 0].grid(True, alpha=0.3)
-    axes[0, 0].text(0.05, 0.95, 
+    axes[0, 0].text(0.05, 0.95,
         f"Mean={jnp.mean(init_vel_norm):.2f}\nStd={jnp.std(init_vel_norm):.2f}",
         transform=axes[0, 0].transAxes, 
         bbox=dict(facecolor='white', alpha=0.8),
         verticalalignment='top')
 
-    # Histograms for vx, vy, vz components of initial velocities
     axes[0, 1].hist(init_vel[:, 0], bins=50, color='blue', alpha=0.7, density=True)
     axes[0, 1].set_xlabel('Vx', fontsize=12)
     axes[0, 1].set_ylabel('Density', fontsize=12)
@@ -522,262 +573,343 @@ def plot_velocity_distributions(sol, G, tf, dt, length, n_part, random_vel, save
         bbox=dict(facecolor='white', alpha=0.8),
         verticalalignment='top')
 
-    # Second row - Final velocities
-    # Histogram of velocity magnitudes
-    axes[1, 0].hist(final_vel_norm, bins=50, color='red', alpha=0.7, density=True)
-    axes[1, 0].set_xlabel('Velocity Magnitude', fontsize=12)
-    axes[1, 0].set_ylabel('Density', fontsize=12)
-    axes[1, 0].set_title('Final Velocity Magnitudes', fontsize=14)
+    # Second row - Initial velocity vector fields (quiver plots)
+    stride = quiver_stride
+    idx = np.arange(0, n_part, stride)
+    # XY plane
+    axes[1, 0].quiver(init_pos[idx, 0], init_pos[idx, 1], init_vel[idx, 0], init_vel[idx, 1], 
+                      angles='xy', scale_units='xy', scale=1, color='blue', alpha=0.7)
+    axes[1, 0].set_title('Initial Velocity Field (XY)', fontsize=14)
+    axes[1, 0].set_xlabel('X')
+    axes[1, 0].set_ylabel('Y')
+    axes[1, 0].set_xlim(0, length)
+    axes[1, 0].set_ylim(0, length)
     axes[1, 0].grid(True, alpha=0.3)
-    axes[1, 0].text(0.05, 0.95, 
-        f"Mean={jnp.mean(final_vel_norm):.2f}\nStd={jnp.std(final_vel_norm):.2f}",
-        transform=axes[1, 0].transAxes, 
-        bbox=dict(facecolor='white', alpha=0.8),
-        verticalalignment='top')
 
-    # Histograms for vx, vy, vz components of final velocities
-    axes[1, 1].hist(final_vel[:, 0], bins=50, color='red', alpha=0.7, density=True)
-    axes[1, 1].set_xlabel('Vx', fontsize=12)
-    axes[1, 1].set_ylabel('Density', fontsize=12)
-    axes[1, 1].set_title('Final Vx Distribution', fontsize=14)
+    # XZ plane
+    axes[1, 1].quiver(init_pos[idx, 0], init_pos[idx, 2], init_vel[idx, 0], init_vel[idx, 2], 
+                      angles='xy', scale_units='xy', scale=1, color='blue', alpha=0.7)
+    axes[1, 1].set_title('Initial Velocity Field (XZ)', fontsize=14)
+    axes[1, 1].set_xlabel('X')
+    axes[1, 1].set_ylabel('Z')
+    axes[1, 1].set_xlim(0, length)
+    axes[1, 1].set_ylim(0, length)
     axes[1, 1].grid(True, alpha=0.3)
-    axes[1, 1].text(0.05, 0.95, 
-        f"Mean={jnp.mean(final_vel[:, 0]):.2f}\nStd={jnp.std(final_vel[:, 0]):.2f}",
-        transform=axes[1, 1].transAxes, 
-        bbox=dict(facecolor='white', alpha=0.8),
-        verticalalignment='top')
 
-    axes[1, 2].hist(final_vel[:, 1], bins=50, color='red', alpha=0.7, density=True)
-    axes[1, 2].set_xlabel('Vy', fontsize=12)
-    axes[1, 2].set_ylabel('Density', fontsize=12)
-    axes[1, 2].set_title('Final Vy Distribution', fontsize=14)
+    # YZ plane
+    axes[1, 2].quiver(init_pos[idx, 1], init_pos[idx, 2], init_vel[idx, 1], init_vel[idx, 2], 
+                      angles='xy', scale_units='xy', scale=1, color='blue', alpha=0.7)
+    axes[1, 2].set_title('Initial Velocity Field (YZ)', fontsize=14)
+    axes[1, 2].set_xlabel('Y')
+    axes[1, 2].set_ylabel('Z')
+    axes[1, 2].set_xlim(0, length)
+    axes[1, 2].set_ylim(0, length)
     axes[1, 2].grid(True, alpha=0.3)
-    axes[1, 2].text(0.05, 0.95, 
-        f"Mean={jnp.mean(final_vel[:, 1]):.2f}\nStd={jnp.std(final_vel[:, 1]):.2f}",
-        transform=axes[1, 2].transAxes, 
+
+    # Leave axes[1, 3] empty
+    axes[1, 3].axis('off')
+
+    # Third row - Final velocities (histograms)
+    axes[2, 0].hist(final_vel_norm, bins=50, color='red', alpha=0.7, density=True)
+    axes[2, 0].set_xlabel('Velocity Magnitude', fontsize=12)
+    axes[2, 0].set_ylabel('Density', fontsize=12)
+    axes[2, 0].set_title('Final Velocity Magnitudes', fontsize=14)
+    axes[2, 0].grid(True, alpha=0.3)
+    axes[2, 0].text(0.05, 0.95, 
+        f"Mean={jnp.mean(final_vel_norm):.2f}\nStd={jnp.std(final_vel_norm):.2f}",
+        transform=axes[2, 0].transAxes, 
         bbox=dict(facecolor='white', alpha=0.8),
         verticalalignment='top')
 
-    axes[1, 3].hist(final_vel[:, 2], bins=50, color='red', alpha=0.7, density=True)
-    axes[1, 3].set_xlabel('Vz', fontsize=12)
-    axes[1, 3].set_ylabel('Density', fontsize=12)
-    axes[1, 3].set_title('Final Vz Distribution', fontsize=14)
-    axes[1, 3].grid(True, alpha=0.3)
-    axes[1, 3].text(0.05, 0.95, 
-        f"Mean={jnp.mean(final_vel[:, 2]):.2f}\nStd={jnp.std(final_vel[:, 2]):.2f}",
-        transform=axes[1, 3].transAxes, 
+    axes[2, 1].hist(final_vel[:, 0], bins=50, color='red', alpha=0.7, density=True)
+    axes[2, 1].set_xlabel('Vx', fontsize=12)
+    axes[2, 1].set_ylabel('Density', fontsize=12)
+    axes[2, 1].set_title('Final Vx Distribution', fontsize=14)
+    axes[2, 1].grid(True, alpha=0.3)
+    axes[2, 1].text(0.05, 0.95, 
+        f"Mean={jnp.mean(final_vel[:, 0]):.2f}\nStd={jnp.std(final_vel[:, 0]):.2f}",
+        transform=axes[2, 1].transAxes, 
         bbox=dict(facecolor='white', alpha=0.8),
         verticalalignment='top')
+
+    axes[2, 2].hist(final_vel[:, 1], bins=50, color='red', alpha=0.7, density=True)
+    axes[2, 2].set_xlabel('Vy', fontsize=12)
+    axes[2, 2].set_ylabel('Density', fontsize=12)
+    axes[2, 2].set_title('Final Vy Distribution', fontsize=14)
+    axes[2, 2].grid(True, alpha=0.3)
+    axes[2, 2].text(0.05, 0.95, 
+        f"Mean={jnp.mean(final_vel[:, 1]):.2f}\nStd={jnp.std(final_vel[:, 1]):.2f}",
+        transform=axes[2, 2].transAxes, 
+        bbox=dict(facecolor='white', alpha=0.8),
+        verticalalignment='top')
+
+    axes[2, 3].hist(final_vel[:, 2], bins=50, color='red', alpha=0.7, density=True)
+    axes[2, 3].set_xlabel('Vz', fontsize=12)
+    axes[2, 3].set_ylabel('Density', fontsize=12)
+    axes[2, 3].set_title('Final Vz Distribution', fontsize=14)
+    axes[2, 3].grid(True, alpha=0.3)
+    axes[2, 3].text(0.05, 0.95, 
+        f"Mean={jnp.mean(final_vel[:, 2]):.2f}\nStd={jnp.std(final_vel[:, 2]):.2f}",
+        transform=axes[2, 3].transAxes, 
+        bbox=dict(facecolor='white', alpha=0.8),
+        verticalalignment='top')
+
+    # Fourth row - Final velocity vector fields (quiver plots)
+    # XY plane
+    axes[3, 0].quiver(final_pos[idx, 0], final_pos[idx, 1], final_vel[idx, 0], final_vel[idx, 1], 
+                      angles='xy', scale_units='xy', scale=1, color='red', alpha=0.7)
+    axes[3, 0].set_title('Final Velocity Field (XY)', fontsize=14)
+    axes[3, 0].set_xlabel('X')
+    axes[3, 0].set_ylabel('Y')
+    axes[3, 0].set_xlim(0, length)
+    axes[3, 0].set_ylim(0, length)
+    axes[3, 0].grid(True, alpha=0.3)
+
+    # XZ plane
+    axes[3, 1].quiver(final_pos[idx, 0], final_pos[idx, 2], final_vel[idx, 0], final_vel[idx, 2], 
+                      angles='xy', scale_units='xy', scale=1, color='red', alpha=0.7)
+    axes[3, 1].set_title('Final Velocity Field (XZ)', fontsize=14)
+    axes[3, 1].set_xlabel('X')
+    axes[3, 1].set_ylabel('Z')
+    axes[3, 1].set_xlim(0, length)
+    axes[3, 1].set_ylim(0, length)
+    axes[3, 1].grid(True, alpha=0.3)
+
+    # YZ plane
+    axes[3, 2].quiver(final_pos[idx, 1], final_pos[idx, 2], final_vel[idx, 1], final_vel[idx, 2], 
+                      angles='xy', scale_units='xy', scale=1, color='red', alpha=0.7)
+    axes[3, 2].set_title('Final Velocity Field (YZ)', fontsize=14)
+    axes[3, 2].set_xlabel('Y')
+    axes[3, 2].set_ylabel('Z')
+    axes[3, 2].set_xlim(0, length)
+    axes[3, 2].set_ylim(0, length)
+    axes[3, 2].grid(True, alpha=0.3)
+
+    # Leave axes[3, 3] empty
+    axes[3, 3].axis('off')
 
     plt.tight_layout()
-    plt.subplots_adjust(top=0.92)  # Adjust for the suptitle
+    plt.subplots_adjust(top=0.95)  # Adjust for the suptitle
     if save_path:
         fig.savefig(save_path)
     plt.show()
     
     return fig, axes
 
-def create_video(sol, length, G, t_f, dt, n_part, random_vel, softening=0.1, m_part=1.0, 
-                enable_energy_tracking=True, save_path=None, fps=10, dpi=100):
-    """
-    Create a video showing particle evolution over time.
-    
-    Parameters:
-    -----------
-    sol : diffrax solution object
-        Solution containing particle trajectories
-    length : float
-        Box size
-    G : float
-        Gravitational constant
-    t_f : float
-        Final time
-    dt : float
-        Time step
-    n_part : int
-        Number of particles
-    random_vel : bool
-        Whether random velocities were used in the simulation
-    softening : float
-        Softening parameter
-    m_part : float
-        Particle mass
-    enable_energy_tracking : bool
-        Whether to calculate and plot energy evolution (can be slow for large simulations)
-    save_path : str
-        Path to save the video file
-    fps : int
-        Frames per second for the video
-    dpi : int
-        Resolution of the video frames
-    """
+def create_video(
+    sol, length, G, t_f, dt, n_part, random_vel, density_scaling, softening=0.1, m_part=1.0, 
+    enable_energy_tracking=True, save_path=None, fps=10, dpi=100, energy_data=None
+):
+    import matplotlib.pyplot as plt
     import matplotlib.animation as animation
     import shutil
-    
-    # Check if ffmpeg is available
+    import numpy as np
+    import jax.numpy as jnp
+
+    # Check ffmpeg
     if not shutil.which('ffmpeg'):
         print("Warning: ffmpeg not found. Trying alternative video writers...")
         if save_path and save_path.endswith('.mp4'):
             save_path = save_path.replace('.mp4', '.gif')
             print(f"Saving as GIF instead: {save_path}")
-    
-    print(f"Creating video with {len(sol.ts)} frames...")
-    
-    # Pre-calculate all energies only if energy tracking is enabled
+
+    # Energy calculation
     all_times = []
     all_ke = all_pe = all_te = None
-    
     if enable_energy_tracking:
-        print("Pre-calculating energies for all frames...")
-        all_ke = []
-        all_pe = []
-        all_te = []
-        
-        for i in range(len(sol.ts)):
-            pos = sol.ys[i, 0]
-            vel = sol.ys[i, 1]
-            ke, pe, te = calculate_energy(pos, vel, G, length, softening, m_part)
-            all_times.append(sol.ts[i])
-            all_ke.append(ke)
-            all_pe.append(pe)
-            all_te.append(te)
-        
-        all_ke = jnp.array(all_ke)
-        all_pe = jnp.array(all_pe)
-        all_te = jnp.array(all_te)
+        if energy_data is not None:
+            print("Using pre-computed energy data for video creation...")
+            all_times = energy_data['times']
+            all_ke = energy_data['kinetic']
+            all_pe = energy_data['potential']
+            all_te = energy_data['total']
+        else:
+            print("Computing energies for all frames (no pre-computed data provided)...")
+            all_ke, all_pe, all_te, all_times = [], [], [], []
+            for i in range(len(sol.ts)):
+                pos = sol.ys[i, 0]
+                vel = sol.ys[i, 1]
+                ke, pe, te = calculate_energy(pos, vel, G, length, softening, m_part)
+                all_times.append(sol.ts[i])
+                all_ke.append(ke)
+                all_pe.append(pe)
+                all_te.append(te)
+            all_ke = jnp.array(all_ke)
+            all_pe = jnp.array(all_pe)
+            all_te = jnp.array(all_te)
     else:
         all_times = sol.ts
-    
-    print("Energy calculation complete. Creating animation...")
-    
-    # Create figure and subplots - layout depends on energy tracking
+
+    fig = plt.figure(figsize=(24, 12))
+    axes = np.empty((2, 4), dtype=object)
+    axes[0, 0] = fig.add_subplot(2, 4, 1, projection='3d')
+    axes[0, 1] = fig.add_subplot(2, 4, 2)
+    axes[0, 2] = fig.add_subplot(2, 4, 3)
+    axes[0, 3] = fig.add_subplot(2, 4, 4)
+    axes[1, 0] = fig.add_subplot(2, 4, 5)
+    axes[1, 1] = fig.add_subplot(2, 4, 6)
+    axes[1, 2] = fig.add_subplot(2, 4, 7)
+    axes[1, 3] = fig.add_subplot(2, 4, 8)
+
+    fig.subplots_adjust(wspace=0.4, hspace=0.5)
+    title = f'N-Body Simulation (G={G}, tf={t_f}, dt={dt}, L={length}, N={n_part}, random_vel={random_vel})'
+    fig.suptitle(title, y=0.98, fontsize=14)
+
+    # --- INITIALIZE PLOTS (frame 0 data) ---
+    pos = sol.ys[0, 0]
+    vel = sol.ys[0, 1]
+    current_time = sol.ts[0]
+
+    # 3D scatter (frame 0)
+    ax_3d = axes[0, 0]
+    scatter3d = ax_3d.scatter(pos[:, 0], pos[:, 1], pos[:, 2], c='blue', alpha=0.6, s=1)
+    ax_3d.set_xlim(0, length)
+    ax_3d.set_ylim(0, length)
+    ax_3d.set_zlim(0, length)
+    ax_3d.set_title(f'3D Positions (t={current_time:.3f})')
+    ax_3d.set_xlabel('X')
+    ax_3d.set_ylabel('Y')
+    ax_3d.set_zlabel('Z')
+
+    # 2D projections (scatter)
+    ax_xy = axes[0, 1]
+    scatter_xy = ax_xy.scatter(pos[:, 0], pos[:, 1], c='blue', alpha=0.6, s=1)
+    ax_xy.set_xlim(0, length)
+    ax_xy.set_ylim(0, length)
+    ax_xy.set_title(f'XY Projection (t={current_time:.3f})')
+    ax_xy.set_xlabel('X')
+    ax_xy.set_ylabel('Y')
+    ax_xy.grid(True, alpha=0.3)
+
+    ax_xz = axes[0, 2]
+    scatter_xz = ax_xz.scatter(pos[:, 0], pos[:, 2], c='blue', alpha=0.6, s=1)
+    ax_xz.set_xlim(0, length)
+    ax_xz.set_ylim(0, length)
+    ax_xz.set_title(f'XZ Projection (t={current_time:.3f})')
+    ax_xz.set_xlabel('X')
+    ax_xz.set_ylabel('Z')
+    ax_xz.grid(True, alpha=0.3)
+
+    ax_yz = axes[0, 3]
+    scatter_yz = ax_yz.scatter(pos[:, 1], pos[:, 2], c='blue', alpha=0.6, s=1)
+    ax_yz.set_xlim(0, length)
+    ax_yz.set_ylim(0, length)
+    ax_yz.set_title(f'YZ Projection (t={current_time:.3f})')
+    ax_yz.set_xlabel('Y')
+    ax_yz.set_ylabel('Z')
+    ax_yz.grid(True, alpha=0.3)
+
+    # --- Density Field projections (imshow) ---
+    density_field = cic_paint(jnp.zeros((length, length, length)), pos)
+    if density_scaling != "none":
+        from model import apply_density_scaling
+        density_field = apply_density_scaling(density_field, density_scaling)
+
+    ax_density_xy = axes[1, 0]
+    im_xy = ax_density_xy.imshow(jnp.sum(density_field, axis=2), cmap='inferno', origin='lower',
+                                 extent=[0, length, 0, length], aspect='auto')
+    ax_density_xy.set_title(f'Density Field XY (t={current_time:.3f})')
+    ax_density_xy.set_xlabel('X')
+    ax_density_xy.set_ylabel('Y')
+    ax_density_xy.set_xlim(0, length)
+    ax_density_xy.set_ylim(0, length)
+    cb_xy = fig.colorbar(im_xy, ax=ax_density_xy, orientation='vertical', fraction=0.046, pad=0.04)
+
+    ax_density_xz = axes[1, 1]
+    im_xz = ax_density_xz.imshow(jnp.sum(density_field, axis=1), cmap='inferno', origin='lower',
+                                 extent=[0, length, 0, length], aspect='auto')
+    ax_density_xz.set_title(f'Density Field XZ (t={current_time:.3f})')
+    ax_density_xz.set_xlabel('X')
+    ax_density_xz.set_ylabel('Z')
+    ax_density_xz.set_xlim(0, length)
+    ax_density_xz.set_ylim(0, length)
+    cb_xz = fig.colorbar(im_xz, ax=ax_density_xz, orientation='vertical', fraction=0.046, pad=0.04)
+
+    ax_density_yz = axes[1, 2]
+    im_yz = ax_density_yz.imshow(jnp.sum(density_field, axis=0), cmap='inferno', origin='lower',
+                                 extent=[0, length, 0, length], aspect='auto')
+    ax_density_yz.set_title(f'Density Field YZ (t={current_time:.3f})')
+    ax_density_yz.set_xlabel('Y')
+    ax_density_yz.set_ylabel('Z')
+    ax_density_yz.set_xlim(0, length)
+    ax_density_yz.set_ylim(0, length)
+    cb_yz = fig.colorbar(im_yz, ax=ax_density_yz, orientation='vertical', fraction=0.046, pad=0.04)
+
+    # --- Energy plot (initialize three lines) ---
+    ax_energy = axes[1, 3]
     if enable_energy_tracking:
-        fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+        (line_ke,) = ax_energy.plot([], [], 'b-', label='Kinetic', linewidth=2)
+        (line_pe,) = ax_energy.plot([], [], 'r-', label='Potential', linewidth=2)
+        (line_te,) = ax_energy.plot([], [], 'k-', label='Total', linewidth=2)
+        ax_energy.set_xlabel('Time')
+        ax_energy.set_ylabel('Energy')
+        ax_energy.set_title('Energy Evolution')
+        ax_energy.legend()
+        ax_energy.grid(True, alpha=0.3)
+        # Set y-limits
+        if len(all_ke) > 0:
+            energy_min = min(jnp.min(all_ke), jnp.min(all_pe), jnp.min(all_te))
+            energy_max = max(jnp.max(all_ke), jnp.max(all_pe), jnp.max(all_te))
+            energy_range = energy_max - energy_min
+            if energy_range > 0:
+                ax_energy.set_ylim(energy_min - 0.1*energy_range, energy_max + 0.1*energy_range)
     else:
-        fig, axes = plt.subplots(2, 2, figsize=(12, 12))
-    
-    # Create title
-    title = f'N-Body Simulation (G={G}, tf={t_f}, dt={dt}, L={length}, N={n_part}, random_vel={random_vel}'
-    if enable_energy_tracking:
-        title += ', energy_tracking=True'
-    title += ')'
-    fig.suptitle(title, fontsize=14)
-    
+        ax_energy.axis('off')
+
     def animate(frame):
-        # Clear all axes
-        if enable_energy_tracking:
-            for i in range(2):
-                for j in range(3):
-                    axes[i, j].clear()
-        else:
-            for i in range(2):
-                for j in range(2):
-                    axes[i, j].clear()
-        
-        # Get positions and velocities for current frame
         pos = sol.ys[frame, 0]
         vel = sol.ys[frame, 1]
         current_time = sol.ts[frame]
-        
-        # 3D scatter plot
-        ax_3d = axes[0, 0]
-        ax_3d.scatter(pos[:, 0], pos[:, 1], pos[:, 2], c='blue', s=1, alpha=0.6)
-        ax_3d.set_xlim(0, length)
-        ax_3d.set_ylim(0, length)
-        ax_3d.set_zlim(0, length)
+
+        # Update scatter plots
+        scatter3d._offsets3d = (pos[:, 0], pos[:, 1], pos[:, 2])
         ax_3d.set_title(f'3D Positions (t={current_time:.3f})')
-        ax_3d.set_xlabel('X')
-        ax_3d.set_ylabel('Y')
-        ax_3d.set_zlabel('Z')
-        
-        # XY scatter plot
-        ax_xy = axes[0, 1]
-        ax_xy.scatter(pos[:, 0], pos[:, 1], c='blue', s=1, alpha=0.6)
-        ax_xy.set_xlim(0, length)
-        ax_xy.set_ylim(0, length)
+
+        scatter_xy.set_offsets(np.c_[pos[:, 0], pos[:, 1]])
         ax_xy.set_title(f'XY Projection (t={current_time:.3f})')
-        ax_xy.set_xlabel('X')
-        ax_xy.set_ylabel('Y')
-        ax_xy.grid(True, alpha=0.3)
-        
+
+        scatter_xz.set_offsets(np.c_[pos[:, 0], pos[:, 2]])
+        ax_xz.set_title(f'XZ Projection (t={current_time:.3f})')
+
+        scatter_yz.set_offsets(np.c_[pos[:, 1], pos[:, 2]])
+        ax_yz.set_title(f'YZ Projection (t={current_time:.3f})')
+
+        # Update density fields
+        density_field = cic_paint(jnp.zeros((length, length, length)), pos)
+        if density_scaling != "none":
+            from model import apply_density_scaling
+            density_field = apply_density_scaling(density_field, density_scaling)
+        im_xy.set_data(jnp.sum(density_field, axis=2))
+        ax_density_xy.set_title(f'Density Field XY (t={current_time:.3f})')
+        im_xz.set_data(jnp.sum(density_field, axis=1))
+        ax_density_xz.set_title(f'Density Field XZ (t={current_time:.3f})')
+        im_yz.set_data(jnp.sum(density_field, axis=0))
+        ax_density_yz.set_title(f'Density Field YZ (t={current_time:.3f})')
+
+        # Update energy plot
         if enable_energy_tracking:
-            # XZ scatter plot
-            ax_xz = axes[0, 2]
-            ax_xz.scatter(pos[:, 0], pos[:, 2], c='blue', s=1, alpha=0.6)
-            ax_xz.set_xlim(0, length)
-            ax_xz.set_ylim(0, length)
-            ax_xz.set_title(f'XZ Projection (t={current_time:.3f})')
-            ax_xz.set_xlabel('X')
-            ax_xz.set_ylabel('Z')
-            ax_xz.grid(True, alpha=0.3)
-            
-            # Density field
-            ax_density = axes[1, 0]
-            density_field = cic_paint(jnp.zeros((length, length, length)), pos)
-            density_2d = jnp.sum(density_field, axis=2)
-            
-            im = ax_density.imshow(density_2d, cmap='inferno', origin='lower')
-            ax_density.set_title(f'Density Field (t={current_time:.3f})')
-            
-            # Velocity magnitude histogram
-            ax_vel = axes[1, 1]
-            vel_magnitudes = jnp.sqrt(jnp.sum(vel**2, axis=1))
-            ax_vel.hist(vel_magnitudes, bins=30, color='green', alpha=0.7, density=True)
-            ax_vel.set_xlabel('Velocity Magnitude')
-            ax_vel.set_ylabel('Density')
-            ax_vel.set_title(f'Velocity Distribution (t={current_time:.3f})')
-            ax_vel.grid(True, alpha=0.3)
-            
-            # Energy evolution plot (up to current frame)
-            ax_energy = axes[1, 2]
             current_frame_times = all_times[:frame+1]
             current_frame_ke = all_ke[:frame+1]
             current_frame_pe = all_pe[:frame+1]
             current_frame_te = all_te[:frame+1]
-            
-            ax_energy.plot(current_frame_times, current_frame_ke, 'b-', label='Kinetic', linewidth=2)
-            ax_energy.plot(current_frame_times, current_frame_pe, 'r-', label='Potential', linewidth=2)
-            ax_energy.plot(current_frame_times, current_frame_te, 'k-', label='Total', linewidth=2)
-            
-            # Mark current time
+            line_ke.set_data(current_frame_times, current_frame_ke)
+            line_pe.set_data(current_frame_times, current_frame_pe)
+            line_te.set_data(current_frame_times, current_frame_te)
+            ax_energy.set_xlim(all_times[0], all_times[-1])
+            # Mark current time (vertical line)
+            for vline in ax_energy.lines[3:]:  # Remove previous vertical lines
+                vline.remove()
             ax_energy.axvline(x=current_time, color='gray', linestyle='--', alpha=0.7)
-            
-            ax_energy.set_xlabel('Time')
-            ax_energy.set_ylabel('Energy')
-            ax_energy.set_title('Energy Evolution')
-            ax_energy.legend()
-            ax_energy.grid(True, alpha=0.3)
-            
-            # Set consistent y-limits for energy plot
-            if len(all_ke) > 0:
-                energy_min = min(jnp.min(all_ke), jnp.min(all_pe), jnp.min(all_te))
-                energy_max = max(jnp.max(all_ke), jnp.max(all_pe), jnp.max(all_te))
-                energy_range = energy_max - energy_min
-                if energy_range > 0:
-                    ax_energy.set_ylim(energy_min - 0.1*energy_range, energy_max + 0.1*energy_range)
-        else:
-            # Simpler layout without energy tracking
-            # Density field
-            ax_density = axes[1, 0]
-            density_field = cic_paint(jnp.zeros((length, length, length)), pos)
-            density_2d = jnp.sum(density_field, axis=2)
-            
-            im = ax_density.imshow(density_2d, cmap='inferno', origin='lower')
-            ax_density.set_title(f'Density Field (t={current_time:.3f})')
-            
-            # Velocity magnitude histogram
-            ax_vel = axes[1, 1]
-            vel_magnitudes = jnp.sqrt(jnp.sum(vel**2, axis=1))
-            ax_vel.hist(vel_magnitudes, bins=30, color='green', alpha=0.7, density=True)
-            ax_vel.set_xlabel('Velocity Magnitude')
-            ax_vel.set_ylabel('Density')
-            ax_vel.set_title(f'Velocity Distribution (t={current_time:.3f})')
-            ax_vel.grid(True, alpha=0.3)
-        
-        return []
-    
-    anim = animation.FuncAnimation(fig, animate, frames=len(sol.ts), interval=100, blit=False, repeat=False)
-    
+
+        return (
+            scatter3d, scatter_xy, scatter_xz, scatter_yz,
+            im_xy, im_xz, im_yz,
+        )
+
+    anim = animation.FuncAnimation(
+        fig, animate, frames=len(sol.ts), interval=100, blit=False, repeat=False
+    )
+
     if save_path:
         try:
             if save_path.endswith('.gif'):
@@ -786,11 +918,20 @@ def create_video(sol, length, G, t_f, dt, n_part, random_vel, softening=0.1, m_p
             else:
                 writer = animation.FFMpegWriter(fps=fps, bitrate=800, extra_args=['-vcodec', 'libx264'])
                 anim.save(save_path, writer=writer, dpi=dpi)
+            print(f"Video successfully saved to: {save_path}")
         except Exception as e:
             print(f"Error saving video: {e}")
-    
+            try:
+                gif_path = save_path.replace('.mp4', '.gif') if save_path.endswith('.mp4') else save_path + '.gif'
+                writer = animation.PillowWriter(fps=fps)
+                anim.save(gif_path, writer=writer)
+                print(f"Fallback: Video saved as GIF to: {gif_path}")
+            except Exception as e2:
+                print(f"Failed to save video in any format: {e2}")
+
     plt.close(fig)
     return anim
+
 
 ### Plotting functions for sampling experiments
 def plot_trace_subplots(mcmc_samples, theta, G, t_f, dt, softening, length, n_part, random_vel, figsize=(18, 5), method="HMC", param_order=("sigma", "mean", "vel_sigma"), infer_vel_sigma=True, save_path=None):
@@ -886,3 +1027,4 @@ def plot_corner_after_burnin(mcmc_samples, theta, burnin=1000, param_order=("sig
         fig.savefig(save_path)
     plt.show()
     return fig
+
