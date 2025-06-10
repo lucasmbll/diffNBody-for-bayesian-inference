@@ -4,7 +4,7 @@
 git add .
 
 # 2. Commit your changes with a message
-git commit -m "Update: Circular velocity enclosed mass, video generation, jupyter notebook report, energy tracking, density scaling"
+git commit -m "Update: New video visual, and velocity plots"
 
 # 3. Push to your remote repository (e.g., origin, main branch)
 git push origin main
@@ -28,6 +28,10 @@ kill a session : tmux kill-session -t mysession
 
 
 python src/run_experiments.py --config configs/default_sim.yaml
+
+python src/run_experiments.py --config configs/blobs_sim.yaml
+python src/run_experiments.py --config configs/blobs_sampling.yaml
+python src/run_experiments.py --config configs/blobs_sampling_1.yaml
 
 Current sessions name :
 sampling

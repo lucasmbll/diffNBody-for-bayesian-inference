@@ -1,51 +1,69 @@
-# defaults.yaml
-# Template for all experiments. Copy and adapt as needed.
+# Configuration for N-body simulation using blobs model
 
 # --- HARDWARE/CLUSTER SETTINGS ---
-cuda_visible_devices: 5 # GPU index to use (set per experiment if running in parallel)
+cuda_visible_devices: 3  # GPU index to use
 
 # --- EXPERIMENT MODE and MISCELLANEOUS ---
 mode: sim      # Experiment mode (options: "sim", "sampling")
 
 # --- VIDEO SETTINGS ---
-generate_video: true     # Generate simulation video (default: false)
-video_fps: 50           # Video frames per second (default: 10)
-video_dpi: 200          # Video resolution DPI (default: 100)
+generate_video: false     # Generate simulation video
+video_fps: 30            # Video frames per second
+video_dpi: 200           # Video resolution DPI
 
 # --- PLOT SETTINGS ---
-num_trajectories: 5      # Number of particle trajectories to plot (default: 10)
-zoom_for_trajectories: false # Zoom in on trajectories (default: true)
-plot_timesteps: 10      # Number of timesteps to plot in all_timesteps plot (default: 10)
-enable_energy_tracking: true  # Calculate and plot energy evolution (can slow computation for large sims)
+num_trajectories: 10     # Number of particle trajectories to plot
+zoom_for_trajectories: true  # Zoom in on trajectories
+plot_timesteps: 8        # Number of timesteps to plot
+enable_energy_tracking: true  # Calculate and plot energy evolution
 
 # --- FORWARD MODEL PARAMETERS ---
-model_params:
-  model_type: gaussian # Options: "gaussian" or "gaussian_2blobs"
-  
-  # For gaussian model:
-  params: [10.0, 30.0, 1.0]  # [sigma, mean, vel_sigma]
-  random_vel: false  # Whether to add random velocity component (true: random + circular, false: pure circular)
-  
-  # For 2 blobs gaussian model:
-  # params: [10.0, 20.0, 8.0, 40.0, 1.0]  # [sigma1, mean1, sigma2, mean2, vel_sigma]
-  # random_vel: true  # Whether to add random velocity component
-  
-  # Density field scaling options:
-  density_scaling: "log"  # Options: "none", "log", "sqrt", "normalize", "standardize", "power"
-  scaling_kwargs:  # Additional parameters for scaling
-    log_offset: 1.0e-8    # Offset for log scaling (prevents log(0)) - use scientific notation
-    power: 0.5          # Exponent for power scaling
-  
-  #General parameters:
-  n_part: 3000        # TOTAL Number of particles
+model_params:  
+  # General parameters
   G: 5.0              # Gravitational constant
   length: 64          # Box size
   softening: 0.1      # Softening length
   t_f: 5.0            # Final time
-  dt: 0.001             # Time step
-  m_part: 1.0        # Particle mass
-  data_seed: 0        # Random seed for data generation
+  dt: 0.01            # Time step
+  m_part: 1.0         # Particle mass
+  data_seed: 42       # Random seed for data generation
+  
+  # Density field scaling options
+  density_scaling: "log"  # Options: "none", "log", "sqrt", "normalize", "standardize", "power"
+  scaling_kwargs:
+    log_offset: 1.0e-8  # Offset for log scaling
+  
+  # Blob parameters - a list of blob configurations
+  blobs_params:
+    # Blob 1: Gaussian with circular velocities
+      - n_part: 1000
+        pos_type: gaussian
+        pos_params:
+          sigma: 8.0
+          center: [12.0, 52.0, 12.0]s
+        vel_type: circular
+        vel_params:
+          vel_factor: 1.0  # Multiplier for circular velocity
+          distrib: False # Use circular velocity distribution or proxy
 
+      # Blob 2: NFW with virial velocities
+      - n_part: 1000
+        pos_type: nfw
+        pos_params:
+          rs: 5.0          # Scale radius
+          c: 2.0           # Concentration parameter
+          center: [12.0, 12.0, 52.0]
+        vel_type: virial
+        vel_params:
+          virial_ratio: 0.5  # Sub-virial (cold) initial condition
 
-
+      # Blob 3: Gaussian with cold velocities
+      - n_part: 1000
+        pos_type: gaussian
+        pos_params:
+          sigma: 6.0
+          center: [52.0, 12.0, 12.0]
+        vel_type: cold
+        vel_params:
+          vel_dispersion: 0.1  # Small random velocities
 

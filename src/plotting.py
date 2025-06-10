@@ -9,32 +9,12 @@ import corner
 from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
 import cv2
+from utils import calculate_energy
 
 
 ### Plotting functions for DiffNBody simulations
 
-def calculate_energy(pos, vel, G, length, softening, m_part):
-    """Calculate kinetic, potential, and total energy of the system"""
-    n_particles = pos.shape[0]
-    
-    # Kinetic energy
-    ke = 0.5 * m_part * jnp.sum(vel**2)
-    
-    # Potential energy with periodic boundaries
-    dx = pos[:, None, :] - pos[None, :, :]
-    dx = dx - length * jnp.round(dx / length)  # periodic boundaries
-    r2 = jnp.sum(dx**2, axis=-1) + softening**2  # softening squared
-    r = jnp.sqrt(r2)
-    
-    # Upper triangular part to avoid double counting, exclude diagonal
-    mask = jnp.triu(jnp.ones((n_particles, n_particles)), k=1)
-    pe = -G * m_part * m_part * jnp.sum(mask / r)
-    
-    total_energy = ke + pe
-    
-    return ke, pe, total_energy
-
-def plot_density_fields_and_positions(G, tf, dt, length, n_part, input_field, init_pos, final_pos, output_field, random_vel, density_scaling, save_path=None):
+def plot_density_fields_and_positions(G, tf, dt, length, n_part, input_field, init_pos, final_pos, output_field, density_scaling, save_path=None):
     """
     Plot density fields and particle positions in various projections.
 
@@ -48,8 +28,6 @@ def plot_density_fields_and_positions(G, tf, dt, length, n_part, input_field, in
         Final particle positions (N x 3 array)
     output_field : array
         The output density field (3D array) - already scaled
-    random_vel : bool
-        Whether random velocities were used in the simulation
     density_scaling : str
         Type of density scaling applied
     """
@@ -58,7 +36,7 @@ def plot_density_fields_and_positions(G, tf, dt, length, n_part, input_field, in
     gs = plt.GridSpec(4, 4, figure=fig)
 
     title = 'Simulation with parameters:'
-    param_info = f'G={G}, tf={tf}, dt={dt}, L={length}, N={n_part}, random_vel={random_vel}, density_scaling={density_scaling}'
+    param_info = f'G={G}, tf={tf}, dt={dt}, L={length}, N={n_part}, density_scaling={density_scaling}'
 
     title += f'\n{param_info}'
     # Place suptitle at the very top
@@ -217,7 +195,6 @@ def plot_timesteps(sol,
                    tf,
                    dt,
                    n_part,
-                   random_vel,
                    softening,
                    m_part,
                    num_timesteps,
@@ -234,8 +211,6 @@ def plot_timesteps(sol,
     boxL  : box length used in cic_paint
     num_timesteps : int, number of timesteps to plot
     s     : matplotlib scatter size
-    random_vel : bool
-        Whether random velocities were used in the simulation
     enable_energy_tracking : bool
         Whether to calculate and plot energy evolution (can be slow for large simulations)
     density_scaling : str
@@ -293,7 +268,7 @@ def plot_timesteps(sol,
     
     # Add global title with simulation parameters
     title = 'Simulation with parameters:'
-    param_info = f'G={G}, tf={tf}, dt={dt}, L={boxL}, N={n_part}, random_vel={random_vel}, density_scaling={density_scaling}'
+    param_info = f'G={G}, tf={tf}, dt={dt}, L={boxL}, N={n_part}, density_scaling={density_scaling}'
     if enable_energy_tracking:
         param_info += ', energy_tracking=True'
     
@@ -369,7 +344,7 @@ def plot_timesteps(sol,
     plt.show()
     return fig, axes
 
-def plot_trajectories(solution, G, tf, dt, length, n_part, random_vel, num_trajectories=10, figsize=(20, 5), zoom=True, padding=0.1, smooth_window=5):    
+def plot_trajectories(solution, G, tf, dt, length, n_part, num_trajectories=10, figsize=(20, 5), zoom=True, padding=0.1, smooth_window=5):    
     def smooth_trajectory(traj, window):
         if window < 2:
             return traj
@@ -395,8 +370,8 @@ def plot_trajectories(solution, G, tf, dt, length, n_part, random_vel, num_traje
     ax_xz = fig.add_subplot(1, 4, 3)
     ax_yz = fig.add_subplot(1, 4, 4)
 
-    # Create parameter info string with v_circ
-    param_info = f'G={G}, tf={tf}, dt={dt}, L={length}, N={n_part}, random_vel={random_vel}'
+    # Create parameter info string
+    param_info = f'G={G}, tf={tf}, dt={dt}, L={length}, N={n_part}'
     title = param_info
 
     ax_3d_title = '3D Trajectories'
@@ -511,7 +486,7 @@ def plot_trajectories(solution, G, tf, dt, length, n_part, random_vel, num_traje
     return fig
 
 
-def plot_velocity_distributions(sol, G, tf, dt, length, n_part, random_vel, save_path=None, quiver_stride=5):
+def plot_velocity_distributions(sol, G, tf, dt, length, n_part, save_path=None, quiver_stride=5):
     # Calculate velocity norms for initial and final velocities
     init_vel = sol.ys[0, 1]  # Initial velocities
     init_pos = sol.ys[0, 0]  # Initial positions
@@ -523,7 +498,7 @@ def plot_velocity_distributions(sol, G, tf, dt, length, n_part, random_vel, save
     # Create a figure with 4 rows and 4 columns
     fig, axes = plt.subplots(4, 4, figsize=(24, 18))
     title = 'Velocity Distribution Comparison with parameters:'
-    param_info = f'G={G}, tf={tf}, dt={dt}, L={length}, N={n_part}, random_vel={random_vel}'
+    param_info = f'G={G}, tf={tf}, dt={dt}, L={length}, N={n_part}'
     
     title += f'\n{param_info}'
     # Place suptitle at the very top
@@ -697,7 +672,7 @@ def plot_velocity_distributions(sol, G, tf, dt, length, n_part, random_vel, save
     return fig, axes
 
 def create_video(
-    sol, length, G, t_f, dt, n_part, random_vel, density_scaling, softening=0.1, m_part=1.0, 
+    sol, length, G, t_f, dt, n_part, density_scaling, softening=0.1, m_part=1.0, 
     enable_energy_tracking=True, save_path=None, fps=10, dpi=100, energy_data=None
 ):
     import matplotlib.pyplot as plt
@@ -752,7 +727,7 @@ def create_video(
     axes[1, 3] = fig.add_subplot(2, 4, 8)
 
     fig.subplots_adjust(wspace=0.4, hspace=0.5)
-    title = f'N-Body Simulation (G={G}, tf={t_f}, dt={dt}, L={length}, N={n_part}, random_vel={random_vel})'
+    title = f'N-Body Simulation (G={G}, tf={t_f}, dt={dt}, L={length}, N={n_part})'
     fig.suptitle(title, y=0.98, fontsize=14)
 
     # --- INITIALIZE PLOTS (frame 0 data) ---
@@ -905,7 +880,7 @@ def create_video(
             scatter3d, scatter_xy, scatter_xz, scatter_yz,
             im_xy, im_xz, im_yz,
         )
-
+    print("Creating animation...")
     anim = animation.FuncAnimation(
         fig, animate, frames=len(sol.ts), interval=100, blit=False, repeat=False
     )
@@ -934,12 +909,12 @@ def create_video(
 
 
 ### Plotting functions for sampling experiments
-def plot_trace_subplots(mcmc_samples, theta, G, t_f, dt, softening, length, n_part, random_vel, figsize=(18, 5), method="HMC", param_order=("sigma", "mean", "vel_sigma"), infer_vel_sigma=True, save_path=None):
+def plot_trace_subplots(mcmc_samples, theta, G, t_f, dt, softening, length, n_part, method, param_order, save_path=None):
     """
     Plot trace plots for parameters with true values as horizontal lines.
     """
     title = 'Sampling of the model parameters distribution with ' + method
-    param_info = f'G={G}, tf={t_f}, dt={dt}, L={length}, N={n_part}, softening={softening}, random_vel={random_vel}'
+    param_info = f'G={G}, tf={t_f}, dt={dt}, L={length}, N={n_part}, softening={softening}'
 
     # Adjust figure size and subplot count based on number of parameters
     n_params = len(param_order)
@@ -981,7 +956,7 @@ def plot_trace_subplots(mcmc_samples, theta, G, t_f, dt, softening, length, n_pa
     plt.show()
     return fig, axes
 
-def plot_corner_after_burnin(mcmc_samples, theta, burnin=1000, param_order=("sigma", "mean", "vel_sigma"), title="Posterior distribution of model's parameters", infer_vel_sigma=True, save_path=None):
+def plot_corner_after_burnin(mcmc_samples, theta, burnin, param_order, title="Posterior distribution of model's parameters", save_path=None):
     """
     Plot a corner plot of posterior samples after burn-in.
     """

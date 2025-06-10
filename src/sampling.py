@@ -25,6 +25,67 @@ def inference_loop(rng_key, kernel, initial_state, num_samples, progress_bar=Fal
         # Stack states to match lax.scan output
         return jax.tree_util.tree_map(lambda *xs: np.stack(xs), *states)
 
+def extract_params_to_infer(init_params):
+    """
+    Extract parameters to infer from initialization parameters.
+    
+    Parameters:
+    -----------
+    init_params : list of dict
+        List of dictionaries with blob initialization parameters
+        
+    Returns:
+    --------
+    params_to_infer : dict
+        Dictionary mapping parameter names to their default values
+    """
+    params_to_infer = {}
+    
+    for blob_idx, blob in enumerate(init_params):
+        # Extract position parameters
+        if blob['pos_type'] == 'gaussian':
+            params_to_infer[f"blob{blob_idx}_sigma"] = blob['pos_params']['sigma']
+            params_to_infer[f"blob{blob_idx}_center"] = blob['pos_params']['center']
+        elif blob['pos_type'] == 'nfw':
+            params_to_infer[f"blob{blob_idx}_rs"] = blob['pos_params']['rs']
+            params_to_infer[f"blob{blob_idx}_c"] = blob['pos_params']['c']
+            params_to_infer[f"blob{blob_idx}_center"] = blob['pos_params']['center']
+        
+        # Extract velocity parameters
+        if blob['vel_type'] == 'cold':
+            params_to_infer[f"blob{blob_idx}_vel_dispersion"] = blob['vel_params'].get('vel_dispersion', 1e-6)
+        elif blob['vel_type'] == 'virial':
+            params_to_infer[f"blob{blob_idx}_virial_ratio"] = blob['vel_params'].get('virial_ratio', 1.0)
+        elif blob['vel_type'] == 'circular':
+            params_to_infer[f"blob{blob_idx}_vel_factor"] = blob['vel_params'].get('vel_factor', 1.0)
+    
+    return params_to_infer
+
+def generate_default_initial_position(init_params, param_subset=None):
+    """
+    Generate default initial position for sampling based on init_params.
+    
+    Parameters:
+    -----------
+    init_params : list of dict
+        List of dictionaries with blob initialization parameters
+    param_subset : list of str, optional
+        Subset of parameters to include. If None, includes all parameters.
+        
+    Returns:
+    --------
+    initial_position : dict
+        Dictionary of initial parameter values for sampling
+    """
+    all_params = extract_params_to_infer(init_params)
+    
+    if param_subset is None:
+        return all_params
+    
+    # Only include specified parameters
+    return {k: v for k, v in all_params.items() if k in param_subset}
+
+
 def run_hmc(log_posterior, initial_position, inv_mass_matrix, step_size, num_integration_steps, rng_key, num_samples, progress_bar=False):
     hmc = blackjax.hmc(log_posterior, step_size, inv_mass_matrix, num_integration_steps)
     hmc_kernel = jax.jit(hmc.step)

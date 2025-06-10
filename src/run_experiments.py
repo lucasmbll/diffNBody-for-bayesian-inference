@@ -3,7 +3,6 @@
 import os
 os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "1.0" # Set memory fraction to 100% for JAX
 
-import sys
 import yaml
 import datetime  # Added for date-time based directory naming
 
@@ -21,9 +20,7 @@ import argparse
 import jax
 import jax.numpy as jnp
 import numpy as np
-from model import gaussian_model, gaussian_2blobs  # Import the renamed model
-from likelihood import get_log_posterior
-from sampling import run_hmc, run_nuts
+from model import model 
 from plotting import (
     plot_density_fields_and_positions,
     plot_timesteps,
@@ -32,6 +29,7 @@ from plotting import (
     plot_trace_subplots,
     plot_corner_after_burnin,
 )
+
 
 def main(config_path):
     with open(config_path, "r") as f:
@@ -52,49 +50,36 @@ def main(config_path):
         base_dir = os.path.join("results", "nbody_sim_results", f"{config_base}_{now_str}")
     os.makedirs(base_dir, exist_ok=True)
 
-    # --- Model selection ---
+    # --- Model parameters ---
     model_params = config["model_params"]
-    model_type = model_params.get("model_type", "gaussian")  # Default to "gaussian"
-    model_registry = {
-        "gaussian": gaussian_model,
-        "gaussian_2blobs": gaussian_2blobs,
-        # Add more models here as needed
-    }
-    if model_type not in model_registry:
-        raise ValueError(f"Unknown model_type: {model_type}. Available: {list(model_registry.keys())}")
-    model_fn = model_registry[model_type]
-
-    # --- Generate data using model and model_params ---
-    if mode == "sim":
-        print(f"Running simulation using {model_type}_model...")
-    else:
-        print(f"Generating mock data using {model_type}_model...")
-    # Extract parameters for the selected model
-    params = model_params.get("params", None)
-    if params is None:
-        raise ValueError("Model parameters 'params' must be specified in the configuration file.")
-    params = jnp.array(params)
-    n_part = model_params.get("n_part", 1000)
+    model_fn = model 
+        
+    # Extract common parameters
     G = model_params.get("G", 5.0)
     length = model_params.get("length", 64)
     softening = model_params.get("softening", 0.1)
     t_f = model_params.get("t_f", 1.0)
     dt = model_params.get("dt", 0.5)
-    m_part = model_params.get("m_part", 1.0)  # Default mass per particle
-    random_vel = model_params.get("random_vel", True)  # Default to True for backward compatibility
-    
-    # Extract density scaling parameters
-    density_scaling = model_params.get("density_scaling", "none")
-    scaling_kwargs = model_params.get("scaling_kwargs", {})
-    
-    # Optionally: allow for random seed
+    m_part = model_params.get("m_part", 1.0)
+
+    # Random seed
     data_seed = model_params.get("data_seed", 0)
     data_key = jax.random.PRNGKey(data_seed)
     
-    # Run model to generate mock data (only the output field is needed)
-    input_field, init_pos, final_pos, output_field, sol = model_fn(
-        params,
-        n_part=n_part,
+    # Density scaling parameters
+    density_scaling = model_params.get("density_scaling", "none")
+    scaling_kwargs = model_params.get("scaling_kwargs", {})
+    
+    # Extract blobs parameters
+    blobs_params = model_params.get("blobs_params", [])
+    if not blobs_params:
+        raise ValueError("Blob parameters 'blobs_params' must be specified in the configuration file.")
+    
+    n_part = sum(blob['n_part'] for blob in blobs_params)
+
+    # Run model to generate mock data
+    input_field, init_pos, final_pos, output_field, sol, init_params = model_fn(
+        blobs_params,
         G=G,
         length=length,
         softening=softening,
@@ -102,27 +87,25 @@ def main(config_path):
         dt=dt,
         m_part=m_part,
         key=data_key,
-        random_vel=random_vel,
         density_scaling=density_scaling,
         **scaling_kwargs
     )
+
     if mode == "sim":
         print(f"Simulation completed.")
-        print(f"Density scaling applied: {density_scaling}")
-        if density_scaling != "none":
-            print(f"Scaling parameters: {scaling_kwargs}")
     else:
-        print(f"Mock data generated.")
-        print(f"Density scaling applied: {density_scaling}")
+        print(f"Mock data generated.")  
+    if density_scaling != "none":
+        print(f"Density scaling applied: {density_scaling} with parameters: {scaling_kwargs}")
 
     data = output_field  # This is the mock data we will use for inference
 
     # --- Save plots for generated mock data ---
     try:
         print("Creating density fields and positions plot...")
-        # 1. Density fields and positions
         fig = plot_density_fields_and_positions(
-            G, t_f, dt, length, n_part, input_field, init_pos, final_pos, output_field, density_scaling=density_scaling, random_vel=random_vel)
+            G, t_f, dt, length, n_part, input_field, init_pos, final_pos, output_field, 
+            density_scaling=density_scaling)
         fig.savefig(os.path.join(base_dir, "density_fields_and_positions.png"))
         print("Density fields and positions plots saved successfully")
         
@@ -132,7 +115,7 @@ def main(config_path):
         
         if enable_energy_tracking:
             print("Pre-calculating energy for all timesteps...")
-            from plotting import calculate_energy
+            from utils import calculate_energy
             all_times = []
             all_ke = []
             all_pe = []
@@ -156,30 +139,27 @@ def main(config_path):
             print("Energy calculation completed.")
         
         print("Creating timesteps plot...")
-        # 2. All timesteps
         plot_timesteps_num = config.get("plot_timesteps", 10)
-        fig, _ = plot_timesteps(sol, length, G, t_f, dt, n_part, num_timesteps=plot_timesteps_num, 
-                               random_vel=random_vel, softening=softening, m_part=m_part,
+        fig, _ = plot_timesteps(sol, length, G, t_f, dt, n_part, num_timesteps=plot_timesteps_num, softening=softening, m_part=m_part,
                                enable_energy_tracking=enable_energy_tracking, density_scaling=density_scaling,
                                energy_data=energy_data)
         fig.savefig(os.path.join(base_dir, "timesteps.png"))
         print("Timesteps plot saved successfully")
         
         print("Creating trajectories plot...")
-        # 3. Trajectories
         num_trajectories = config.get("num_trajectories", 10)
-        zoom = config.get("zoom", True)
-        fig = plot_trajectories(sol, G, t_f, dt, length, n_part, num_trajectories=num_trajectories, zoom=zoom, random_vel=random_vel)
+        zoom = config.get("zoom_for_trajectories", True)
+        fig = plot_trajectories(sol, G, t_f, dt, length, n_part, num_trajectories=num_trajectories, 
+                                zoom=zoom)
         fig.savefig(os.path.join(base_dir, "trajectories.png"))
         print("Trajectories plot saved successfully")
         
         print("Creating velocity distributions plot...")
-        # 4. Velocity distributions
-        fig, _ = plot_velocity_distributions(sol, G, t_f, dt, length, n_part, random_vel=random_vel)
+        fig, _ = plot_velocity_distributions(sol, G, t_f, dt, length, n_part)
         fig.savefig(os.path.join(base_dir, "velocity_distributions.png"))
         print("Velocity distributions plot saved successfully")
     
-        # 5. Video generation (if enabled)
+        # Video generation (if enabled)
         generate_video = config.get("generate_video", False)
         if generate_video:
             print("Creating simulation video...")
@@ -190,7 +170,7 @@ def main(config_path):
                 dpi = config.get("video_dpi", 100)
                 
                 create_video(sol, length, G, t_f, dt, n_part, 
-                            save_path=video_path, fps=fps, dpi=dpi, density_scaling=density_scaling, random_vel=random_vel,
+                            save_path=video_path, fps=fps, dpi=dpi, density_scaling=density_scaling, 
                             softening=softening, m_part=m_part,
                             enable_energy_tracking=enable_energy_tracking,
                             energy_data=energy_data)
@@ -210,51 +190,59 @@ def main(config_path):
 
     if mode == "sim":
         print("Running in simulation mode - skipping sampling.")
+        
+        # Save init_params for reference
+        if init_params:
+            with open(os.path.join(base_dir, "init_params.yaml"), "w") as f:
+                yaml.dump({"blobs_params": init_params}, f, default_flow_style=False)
         return
 
-    # --- Pass model_fn to likelihood ---
-    prior_type = config.get("prior_type", "gaussian")
+    # --- Sampling part ---
+    from likelihood import get_log_posterior
+    from sampling import run_hmc, run_nuts, extract_params_to_infer
+
+    prior_type = config.get("prior_type", "blob_gaussian")
+    
+    # Handle prior parameters - auto-generate if not provided
+    prior_params = config.get("prior_params", None)
+    if prior_params is None:
+        raise ValueError("No prior parameters specified in config file. Please provide 'prior_params' in your configuration.")
+    
+    # Prepare model arguments for likelihood
+    model_kwargs = {
+        "G": G,
+        "length": length,
+        "softening": softening,
+        "t_f": t_f,
+        "dt": dt,
+        "m_part": m_part,
+        "density_scaling": density_scaling,
+        **scaling_kwargs
+    }
     
     log_posterior = get_log_posterior(
         config["likelihood_type"], 
         data, 
-        prior_params=config.get("prior_params", None),
+        prior_params=prior_params,
         prior_type=prior_type,
-        model_fn=model_fn,  # Pass the selected model function
-        # Pass model parameters to likelihood functions
-        n_part=n_part,
-        G=G,
-        length=length,
-        softening=softening,
-        t_f=t_f,
-        dt=dt,
-        m_part=m_part,
-        random_vel=random_vel,  # Pass random_vel as fixed parameter
-        density_scaling=density_scaling,  # Pass density scaling
-        **scaling_kwargs,  # Pass scaling parameters
+        model_fn=model_fn,
+        init_params=init_params,
+        **model_kwargs,
         **config.get("likelihood_kwargs", {})
     )
 
-    # 3. Initialisation des paramètres
-    initial_position = config["initial_position"]
-    
-    # Check if we should infer vel_sigma based on random_vel
-    infer_vel_sigma = random_vel
-    
-    # Remove vel_sigma from initial_position if not inferring it
-    if not infer_vel_sigma:
-        initial_position = {k: v for k, v in initial_position.items() if k != "vel_sigma"}
-        print("Note: vel_sigma excluded from inference since random_vel=False")
+    # Initialize parameters for sampling
+    initial_position = config.get("initial_position", None)
+    if initial_position is None:
+        print("No initial position specified. Using default values from init_params...")
+        # Only include parameters that have priors defined
+        available_params = extract_params_to_infer(init_params)
+        initial_position = {k: v for k, v in available_params.items() if k in prior_params}
+        print(f"Auto-generated initial position: {list(initial_position.keys())}")
     
     rng_key = jax.random.PRNGKey(config.get("sampling_seed", 12345))
-    num_samples = config.get("num_samples", 5000)
+    num_samples = config.get("num_samples", 500)
     progress_bar = config.get("progress_bar", False)
-    
-    # 4. Lancer le sampler
-    print(f"Starting sampling with {config['sampler'].upper()} sampler...")
-    print(f"Number of samples: {num_samples}")
-    print(f"Parameters to infer: {list(initial_position.keys())}")
-    
     if config["sampler"] == "hmc":
         inv_mass_matrix = np.array(config["inv_mass_matrix"])
         

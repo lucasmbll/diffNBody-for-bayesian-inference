@@ -1,80 +1,64 @@
-# defaults.yaml
-# Template for all experiments. Copy and adapt as needed.
+# Configuration for N-body parameter inference using blobs model
 
 # --- HARDWARE/CLUSTER SETTINGS ---
-cuda_visible_devices: 4 # GPU index to use
+cuda_visible_devices: 5  # GPU index to use
 
 # --- EXPERIMENT MODE and MISCELLANEOUS ---
-mode: sampling      # true: run sampling; false: only run simulation and save mock data plots
-progress_bar: false     # Show progress bar during sampling
+mode: sampling      # Experiment mode (options: "sim", "sampling")
+progress_bar: false  # Show progress bar during sampling
 
-# --- PLOT PARAMETERS ---
-plot_timesteps: 10      # Number of timesteps to plot in all_timesteps plot (default: 10)
-enable_energy_tracking: false  # Calculate and plot energy evolution (can slow computation, disabled for sampling)
+# --- PLOT SETTINGS ---
+plot_timesteps: 5       # Number of timesteps to plot
+enable_energy_tracking: true  # Disable energy tracking for sampling mode
 
 # --- FORWARD MODEL PARAMETERS ---
-model_params:
-  model_type: gaussian # Options: "gaussian" or "gaussian_2blobs"
-  
-  # For gaussian model:
-  params: [10.0, 30.0, 1.0]  # [sigma, mean, vel_sigma]
-  random_vel: true  # Whether to add random velocity component (true: random + circular, false: pure circular)
-  
-  # For gaussian_2blobs model, use instead:
-  # params: [10.0, 20.0, 8.0, 40.0, 1.0]  # [sigma1, mean1, sigma2, mean2, vel_sigma]
-  # random_vel: true  # Whether to add random velocity component
-  
-  # Density field scaling options:
-  density_scaling: "log"  # Options: "none", "log", "sqrt", "normalize", "standardize", "power"
-  scaling_kwargs:  # Additional parameters for scaling
-    log_offset: 1.0e-8    # Offset for log scaling (prevents log(0)) - use scientific notation
-    power: 0.5          # Exponent for power scaling
-  
-  #General parameters:
-  n_part: 1000        # Number of particles
+model_params:  
+  # General parameters
   G: 5.0              # Gravitational constant
   length: 64          # Box size
   softening: 0.1      # Softening length
-  t_f: 1.0            # Final time
-  dt: 0.2             # Time step
-  m_part: 1.0        # Particle mass
-  data_seed: 0        # Random seed for data generation
+  t_f: 1.0            # Final time (shorter for sampling)
+  dt: 0.05            # Time step
+  m_part: 1.0         # Particle mass
+  data_seed: 42       # Random seed for data generation
+  
+  # Density field scaling options
+  density_scaling: "log"  # Options: "none", "log", "sqrt", "normalize", "standardize", "power"
+  scaling_kwargs:
+    log_offset: 1.0e-8  # Offset for log scaling
+  
+  # Blob parameters - a list of blob configurations for generating mock data
+  blobs_params:
+    # Single Gaussian blob with circular velocities for simplicity
+    - n_part: 2000
+      pos_type: gaussian
+      pos_params:
+        sigma: 10.0  # TRUE VALUE to be inferred
+        center: [32.0, 32.0, 32.0]  # TRUE VALUE to be inferred
+      vel_type: circular
+      vel_params:
+        vel_factor: 0.2  # TRUE VALUE to be inferred
+        distrib: False
 
 # --- LIKELIHOOD SETTINGS ---
 likelihood_type: ll1   # Options: "ll1", "ll2"
 likelihood_kwargs: 
-  # Noise parameter (used for all likelihood types):
-  noise: 1         # Standard deviation of instrumental noise
-  # Additional parameters for ll2:
-  #n_realizations: 10  # Number of realizations for ll2 (only used if likelihood_type: ll2)
+  noise: 1  # Standard deviation of instrumental noise
+
 
 # --- PRIOR SETTINGS ---
-prior_type: gaussian   # Options: "gaussian" or "uniform"
+prior_type: blob_gaussian  # Use blob-specific prior
 prior_params:
-  # For gaussian prior:
-  sigma: {mu: 10.0, sigma: 1}        
-  mean: {mu: 30.0, sigma: 5}
-  vel_sigma: {mu: 1.0, sigma: 0.1}
-  # For uniform prior (uncomment and use if prior_type: uniform):
-  # sigma: {low: 8.0, high: 12.0}
-  # mean: {low: 28.0, high: 32.0}
-  # vel_sigma: {low: 0.8, high: 1.2}
+  # Priors for the parameters we want to infer
+  blob0_sigma: {mu: 10.0, sigma: 2.0}
+  blob0_center: {mu: [32.0, 32.0, 32.0], sigma: 5.0}
+  blob0_vel_factor: {mu: 0.3, sigma: 0.3}
 
 # --- SAMPLER SETTINGS ---
-sampler: hmc           # Options: "hmc" or "nuts"
-num_samples: 5000      # Number of MCMC samples to draw
-sampling_seed: 123456   # Random seed for reproducibility
-initial_position: # Initial position for the sampler
-  # For gaussian model:
-  sigma: 10.0
-  mean: 30.0
-  vel_sigma: 1.0  # Only used if random_vel=True
-  # For 2 blobs gaussian model:
-  # sigma1: 10.0
-  # mean1: 30.0
-  # sigma2 : 10.0
-  # mean2: 30.0
-  # vel_sigma: 1.0  # Only used if random_vel=True
+sampler: nuts           # Options: "hmc" or "nuts"
+num_samples: 500        # Number of MCMC samples to draw
+sampling_seed: 12345    # Random seed for reproducibility
+
 # For NUTS:
 num_warmup: 1000       # Number of warmup steps 
 # For HMC:
@@ -82,8 +66,8 @@ step_size: 0.02
 num_integration_steps: 40
 inv_mass_matrix: [1, 0.04, 100.0]  # Will be automatically adjusted to [1, 0.04] if random_vel=False
 
-
-
-
-
-
+# Initial position for the sampler - start with values different from the true ones
+initial_position: 
+  blob0_sigma: 8.0          # Starting guess for sigma
+  blob0_center: [30.0, 30.0, 30.0]  # Starting guess for center
+  blob0_vel_factor: 0.3     # Starting guess for velocity factor

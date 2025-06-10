@@ -9,4 +9,10 @@ src/__pycache__/
 
 # Ignore old configs
 configs/old_configs/
+configs/blobs_sampling_1.yaml
+configs/blobs_sampling_2.yaml
+configs/blobs_sim_nfw.yaml
+configs/blobs_sim.yaml
+
+UPLOAD_INSTRUCTIONS.txt
 
