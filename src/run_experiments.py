@@ -21,6 +21,8 @@ import jax
 import shutil
 import jax.numpy as jnp
 import numpy as np
+import pickle
+
 from model import model 
 
 def main(config_path):
@@ -82,7 +84,7 @@ def main(config_path):
         density_scaling=density_scaling,
         **scaling_kwargs
     )
-
+    
     if mode == "sim":
         print(f"Simulation completed.")
     else:

@@ -25,11 +25,11 @@ re attach : tmux attach -t mysession OR IF ONLY ONE SESSION tmux a
 list all sessions : tmux ls
 
 kill a session : tmux kill-session -t mysession
-
+tmux kill-session -t sim1blob
 
 python src/run_experiments.py --config configs/default_sim.yaml
 
-python src/run_experiments.py --config configs/blobs_sim.yaml
+python src/run_experiments.py --config configs/sampling/test_sim.yaml
 python src/run_experiments.py --config configs/test_sampling.yaml
 python src/run_experiments.py --config configs/test_sampling.yaml
 python src/run_experiments.py --config configs/default_sim.yaml

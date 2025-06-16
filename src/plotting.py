@@ -481,7 +481,7 @@ def plot_trajectories(solution, G, tf, dt, length, n_part, num_trajectories=10, 
 
     # Place suptitle at the very top
     fig.suptitle(title, fontsize=16)
-    fig.subplots_adjust(top=0.98)
+    fig.subplots_adjust(top=0.96)
     start_marker = plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='k', markersize=8, label='Start')
     end_marker = plt.Line2D([0], [0], marker='s', color='w', markerfacecolor='k', markersize=8, label='End')
     background_marker = plt.Line2D([0], [0], marker='o', color='lightgray', markersize=8, label='All Particles')
