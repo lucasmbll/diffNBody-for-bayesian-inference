@@ -30,10 +30,28 @@ kill a session : tmux kill-session -t mysession
 python src/run_experiments.py --config configs/default_sim.yaml
 
 python src/run_experiments.py --config configs/blobs_sim.yaml
-python src/run_experiments.py --config configs/blobs_sampling.yaml
-python src/run_experiments.py --config configs/blobs_sampling_1.yaml
+python src/run_experiments.py --config configs/test_sampling.yaml
+python src/run_experiments.py --config configs/test_sampling.yaml
+python src/run_experiments.py --config configs/default_sim.yaml
 
 Current sessions name :
 sampling
  tmux attach -t sampling_nuts
 sampling_nuts
+
+python test/test_nuts_prior.py
+python test/test_plotting_sampling.py
+
+python src/print_samples_stats.py results/sampling_results/test_sampling_20250613_213809/samples.npz
+
+-c "
+import numpy as np
+samples = np.load('results/sampling_results/test_sampling_20250613_215328/samples.npz')
+print('Parameters:', list(samples.files))
+for name in samples.files:
+    data = samples[name]
+    print(f'{name}: shape={data.shape}, mean={np.mean(data, axis=0)}, std={np.std(data, axis=0)}')
+"
+
+python src/plotting_after_saved.py --samples results/sampling_results/test_sampling_20250613_215328/samples.npz --init_params results/sampling_results/test_sampling_20250613_215328/init_params.yaml --config configs/test_sampling.yaml
+python src/plotting_after_saved.py --samples results/sampling_results/test_sampling_20250613_213809/samples.npz --init_params results/sampling_results/test_sampling_20250613_213809/init_params.yaml --config configs/test_sampling.yaml

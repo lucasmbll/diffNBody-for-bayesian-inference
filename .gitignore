@@ -1,9 +1,10 @@
-# Ignore results directory
+# Ignore results and test directory
 results/
-
+test/
 # Ignore upload instructions file
 UPLOAD_INSTRUCTIONS.txt
 
+notebooks/
 # Ignore Python bytecode files
 src/__pycache__/
 
@@ -15,4 +16,5 @@ configs/blobs_sim_nfw.yaml
 configs/blobs_sim.yaml
 
 UPLOAD_INSTRUCTIONS.txt
-
+configs/test_sim.yaml
+configs/test_sampling.yaml

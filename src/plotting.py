@@ -40,7 +40,9 @@ def plot_density_fields_and_positions(G, tf, dt, length, n_part, input_field, in
 
     title += f'\n{param_info}'
     # Place suptitle at the very top
-    fig.suptitle(title, y=0.98, fontsize=22)
+    fig.suptitle(title, fontsize=22)
+    fig.subplots_adjust(top=0.92)  # Adjust for the suptitle
+
 
     # Determine colorbar label based on scaling
     if density_scaling == "log":
@@ -275,7 +277,8 @@ def plot_timesteps(sol,
     param_info += f', Plotting {len(steps)} timesteps'
     title += f'\n{param_info}'
     # Place suptitle at the very top
-    fig.suptitle(title, y=0.96, fontsize=22)
+    fig.suptitle(title, fontsize=22)
+    fig.subplots_adjust(top=0.96)
 
     for row, t in enumerate(steps): 
         current_step = row * skip
@@ -477,7 +480,8 @@ def plot_trajectories(solution, G, tf, dt, length, n_part, num_trajectories=10, 
     ax_yz.grid(True)
 
     # Place suptitle at the very top
-    fig.suptitle(title, y=1.02, fontsize=16)
+    fig.suptitle(title, fontsize=16)
+    fig.subplots_adjust(top=0.98)
     start_marker = plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='k', markersize=8, label='Start')
     end_marker = plt.Line2D([0], [0], marker='s', color='w', markerfacecolor='k', markersize=8, label='End')
     background_marker = plt.Line2D([0], [0], marker='o', color='lightgray', markersize=8, label='All Particles')
@@ -502,7 +506,8 @@ def plot_velocity_distributions(sol, G, tf, dt, length, n_part, save_path=None, 
     
     title += f'\n{param_info}'
     # Place suptitle at the very top
-    fig.suptitle(title, y=0.98, fontsize=22)
+    fig.suptitle(title, fontsize=22)
+    fig.subplots_adjust(top=0.92)
 
     # First row - Initial velocities (histograms)
     axes[0, 0].hist(init_vel_norm, bins=50, color='blue', alpha=0.7, density=True)
@@ -909,97 +914,142 @@ def create_video(
 
 
 ### Plotting functions for sampling experiments
+
 def plot_trace_subplots(mcmc_samples, theta, G, t_f, dt, softening, length, n_part, method, param_order, save_path=None):
     """
-    Plot trace plots for parameters with true values as horizontal lines.
+    Plot trace plots for MCMC samples with blob parameters.
+    Vector parameters are plotted with separate subplots for each component.
+    Scalar parameters each get their own subplot.
+
+    Parameters:
+    -----------
+    mcmc_samples : dict
+        Dictionary with parameter names as keys and sample arrays as values
+    theta : dict
+        Dictionary with true parameter values
+    param_order : tuple
+        Tuple of parameter names to plot
     """
-    title = 'Sampling of the model parameters distribution with ' + method
+    title = 'Sampling of the model parameters with ' + method
     param_info = f'G={G}, tf={t_f}, dt={dt}, L={length}, N={n_part}, softening={softening}'
 
-    # Adjust figure size and subplot count based on number of parameters
-    n_params = len(param_order)
-    fig, axes = plt.subplots(1, n_params, figsize=(6*n_params, 5), sharex=True)
-    
-    # Handle case where we only have 1 or 2 parameters
-    if n_params == 1:
-        axes = [axes]
-    elif n_params == 2:
-        axes = list(axes)
-    
-    if title or param_info:
-        plt.suptitle(f"{title}\n{param_info}", fontsize=14)
-    
-    colors = ["blue", "green", "orange"]
-    true_labels_map = {"sigma": "pos_std", "mean": "pos_mean", "vel_sigma": "vel_std"}
-    
-    for i, param in enumerate(param_order):
-        if param in mcmc_samples and param in true_labels_map:
-            axes[i].plot(mcmc_samples[param], label=param, color=colors[i % len(colors)])
-            
-            true_label = true_labels_map[param]
-            if true_label in theta:
-                axes[i].axhline(
-                    y=theta[true_label],
-                    color='r', linestyle='--', alpha=0.5,
-                    label=f'True {param}={theta[true_label]}'
-                )
-            
-            axes[i].set_title(f'Sampling of {param.capitalize()}')
-            axes[i].set_xlabel('Iteration')
-            axes[i].set_ylabel('Parameter value')
-            axes[i].legend()
-            axes[i].grid(True)
-    
+    # Determine total number of subplots needed (scalar + vector components)
+    subplot_info = []
+    for param_name in param_order:
+        if param_name in mcmc_samples:
+            samples = mcmc_samples[param_name]
+            if samples.ndim == 2:
+                n_components = samples.shape[1]
+                for j in range(n_components):
+                    subplot_info.append((param_name, j))
+            else:
+                subplot_info.append((param_name, None))
+
+    n_subplots = len(subplot_info)
+    if n_subplots == 0:
+        print("No parameters to plot")
+        return None, None
+
+    fig, axes = plt.subplots(n_subplots, 1, figsize=(12, 3 * n_subplots), squeeze=False)
+    axes = axes.flatten()
+    plt.suptitle(f"{title}\n{param_info}", fontsize=14)
+    plt.subplots_adjust(top=0.92)
+
+    for idx, (param_name, comp_idx) in enumerate(subplot_info):
+        samples = mcmc_samples[param_name]
+        ax = axes[idx]
+        if comp_idx is not None:
+            # Vector component
+            ax.plot(samples[:, comp_idx], color=plt.cm.tab10(comp_idx), label=f'{param_name}[{comp_idx}]', alpha=0.8)
+            # Add true value line if available
+            if param_name in theta:
+                true_val = theta[param_name]
+                if isinstance(true_val, (list, tuple, np.ndarray)):
+                    true_val = np.array(true_val)
+                    if comp_idx < len(true_val):
+                        ax.axhline(true_val[comp_idx], color='red', linestyle='--',
+                                   label=f'True {param_name}[{comp_idx}] = {true_val[comp_idx]:.2f}')
+            ax.set_ylabel(f'{param_name}[{comp_idx}]')
+            ax.legend()
+        else:
+            # Scalar parameter
+            ax.plot(samples, label=param_name)
+            if param_name in theta:
+                true_val = theta[param_name]
+                if not isinstance(true_val, (list, tuple, np.ndarray)):
+                    ax.axhline(true_val, color='red', linestyle='--', label=f'True {param_name} = {true_val:.2f}')
+            ax.set_ylabel(param_name)
+            ax.legend()
+        ax.grid(True)
+
+    axes[-1].set_xlabel('Sample')
     plt.tight_layout()
     if save_path:
         fig.savefig(save_path)
-    plt.show()
     return fig, axes
 
-def plot_corner_after_burnin(mcmc_samples, theta, burnin, param_order, title="Posterior distribution of model's parameters", save_path=None):
+def plot_corner_after_burnin(mcmc_samples, theta, G, t_f, dt, softening, length, n_part, method, burnin, param_order, save_path=None):
     """
-    Plot a corner plot of posterior samples after burn-in.
-    """
-    # Build samples array only for parameters we're actually inferring
+    Plot corner plot for MCMC samples with blob parameters.
+    """    
+    # Prepare data for corner plot
     samples_list = []
-    labels_list = []
-    truths_list = []
+    labels = []
+    truths = []
     
-    true_labels_map = {"sigma": "pos_std", "mean": "pos_mean", "vel_sigma": "vel_std"}
+    title = "Posterior distribution of initial distribution's parameters with " + method.upper()
+    param_info = f'G={G}, tf={t_f}, dt={dt}, L={length}, N={n_part}, softening={softening}'
+    title = f"{title}\n{param_info}"
     
-    for param in param_order:
-        if param in mcmc_samples:
-            samples_list.append(np.array(mcmc_samples[param])[burnin:])
-            labels_list.append(param)
+    for param_name in param_order:
+        if param_name in mcmc_samples:
+            param_samples = mcmc_samples[param_name][burnin:]
             
-            true_label = true_labels_map[param]
-            if true_label in theta:
-                truths_list.append(theta[true_label])
+            # Handle vector parameters
+            if param_samples.ndim > 1 and param_samples.shape[1] > 1:
+                # Treat each coordinate as a separate parameter
+                for coord_idx in range(param_samples.shape[1]):
+                    samples_list.append(param_samples[:, coord_idx])
+                    labels.append(f"{param_name}[{coord_idx}]")
+                    
+                    if param_name in theta:
+                        true_val = np.array(theta[param_name])
+                        truths.append(true_val[coord_idx] if true_val is not None else None)
+                    else:
+                        truths.append(None)
             else:
-                truths_list.append(None)
+                samples_list.append(param_samples.flatten())
+                labels.append(param_name)
+                
+                if param_name in theta:
+                    truths.append(theta[param_name])
+                else:
+                    truths.append(None)
     
     if not samples_list:
-        print("No valid samples found for corner plot")
+        print("No valid samples for corner plot")
         return None
     
-    samples = np.column_stack(samples_list)
+    samples_array = np.column_stack(samples_list)
     
     fig = corner.corner(
-        samples,
-        labels=labels_list,
-        truths=truths_list,
+        samples_array,
+        labels=labels,
+        truths=truths,
         show_titles=True,
-        title_kwargs={"fontsize": 12},
+        title_kwargs={"fontsize": 10},
+        label_kwargs={"fontsize": 10},
         quantiles=[0.16, 0.5, 0.84],
         levels=(0.68, 0.95),
         plot_contours=True,
         fill_contours=True,
         bins=30
     )
+    
     fig.suptitle(title, fontsize=16)
-    plt.subplots_adjust(top=0.90)
+    fig.subplots_adjust(top=0.90)  # Adjust for the suptitle
+
     if save_path:
         fig.savefig(save_path)
-    plt.show()
+    
     return fig
-

@@ -3,8 +3,8 @@
 import jax
 import jax.numpy as jnp
 import jax.scipy.stats as stats
-from model import model
 import numpy as np
+from jax import value_and_grad
 
 # Define likelihood functions
 def log_likelihood_1(parameters, data, noise, model_fn, init_params=None, **kwargs):
@@ -295,33 +295,34 @@ def get_log_posterior(likelihood_type, data, prior_params=None, prior_type="gaus
     
     # Auto-generate prior parameters if requeste
     if prior_params is None:
-        raise ValueError("prior_params must be provided if auto_generate_priors is False.")
+        raise ValueError("prior_params must be provided.")
     
     # Extract noise parameter from likelihood_kwargs - this will be used for all likelihood types
-    noise = likelihood_kwargs.get("noise", 1)  # Default noise value if not specified
+    noise = likelihood_kwargs.get("noise", 1)  
     
     # Filter out noise and other special parameters from kwargs passed to model
     model_kwargs = {k: v for k, v in likelihood_kwargs.items() if k not in ['noise', 'n_realizations']}
     
-    # Choose likelihood
     if likelihood_type == "ll1":
-        likelihood_fn = lambda params: log_likelihood_1(
+        log_likelihood_fn = lambda params: log_likelihood_1(
             params, data, noise, model_fn=model_fn, init_params=init_params, **model_kwargs)
     elif likelihood_type == "ll2":
         n_realizations = likelihood_kwargs.get("n_realizations", 10)
-        likelihood_fn = lambda params: log_likelihood_2(
+        log_likelihood_fn = lambda params: log_likelihood_2(
             params, data, noise, n_realizations, model_fn=model_fn, init_params=init_params, **model_kwargs)
     else:
         raise ValueError(f"Unknown likelihood_type: {likelihood_type}. Available options: 'll1', 'll2'")
 
+    # Add JAX value and grad functions for checking likelihood
     # Choose prior
     prior_fn = PRIOR_REGISTRY.get(prior_type)
     if prior_fn is None:
         raise ValueError(f"Unknown prior_type: {prior_type}")
 
     def log_posterior(params_dict):
-        log_p = prior_fn(params_dict, prior_params)        
-        log_lik = likelihood_fn(params_dict)
+        log_p = prior_fn(params_dict, prior_params)
+        log_lik = log_likelihood_fn(params_dict)
+        #print(f"Log prior: {log_p}, Log likelihood: {log_lik}, Gradient: {jax.grad(log_likelihood_fn)(params_dict)}")
         return log_p + log_lik
 
     return log_posterior

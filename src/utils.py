@@ -119,10 +119,8 @@ def apply_density_scaling(density_field, scaling_type="none", **scaling_kwargs):
         field_min = jnp.min(density_field)
         field_max = jnp.max(density_field)
         field_range = field_max - field_min
-        if field_range > 0:
-            return (density_field - field_min) / field_range
-        else:
-            return density_field
+        field_range = jnp.clip(field_max - field_min, 1e-8, None)  # Avoid division by zero
+        return (density_field - field_min) / field_range
     
     elif scaling_type == "standardize":
         # Standardize to mean 0, std 1: f(x) = (x - mean(x)) / std(x)

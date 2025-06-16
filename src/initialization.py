@@ -32,7 +32,6 @@ def initialize_gaussian_positions(n_part, pos_params, length, key):
     sigma = pos_params['sigma']
     center = pos_params['center']
     
-    # JAX-compatible boundary checking - use jnp.where instead of if statements
     center = jnp.array(center, dtype=jnp.float32)
 
     # Generate positions
@@ -216,26 +215,47 @@ def initialize_circular_velocities_proxy(positions, vel_params, G, m_part):
     rel_pos = positions - center
     
     # Calculate radial distances
-    r = jnp.linalg.norm(rel_pos, axis=1) + 1e-8
+    r = jnp.linalg.norm(rel_pos, axis=1)
     
+    # SAFETY MEASURE 1: Safe guard against very small radii
+    r_min = 0.1  # Increased from 0.01 for more safety
+    r_safe = jnp.maximum(r, r_min)
+
     # Simple approximation for enclosed mass: M(r) ∝ r for small r
-    # For better accuracy with specific distributions, use distribution-specific
-    # enclosed mass functions (like blob_enclosed_mass_gaussian)
-    M_enclosed = M * r / jnp.max(r)
+    M_enclosed = M * r_safe / jnp.max(r_safe)
     
     # Calculate circular velocity magnitude
-    v_circ = jnp.sqrt(G * M_enclosed / r) * vel_factor
+    v_circ = jnp.sqrt(G * M_enclosed / r_safe) * vel_factor
+    
+    # SAFETY MEASURE 2: Cap maximum velocity
+    v_max = 10.0  # Maximum allowed velocity
+    v_circ = jnp.minimum(v_circ, v_max)
     
     # Compute direction perpendicular to radius vector in the x-y plane
     z_axis = jnp.array([0.0, 0.0, 1.0])
     perp = jnp.cross(rel_pos, z_axis)
-    perp = perp / jnp.linalg.norm(perp, axis=1, keepdims=True)
+    
+    # SAFETY MEASURE 3: Safe normalization of perpendicular vector
+    perp_norm = jnp.linalg.norm(perp, axis=1, keepdims=True)
+    perp_norm_safe = jnp.maximum(perp_norm, 1e-6)  # Minimum norm threshold
+    perp_normalized = perp / perp_norm_safe
     
     # Set velocities
-    velocities = v_circ[:, None] * perp
+    velocities = v_circ[:, None] * perp_normalized
+    
+    # SAFETY MEASURE 4: Zero velocity for particles too close to center or with problematic geometry
+    is_too_close = r < r_min
+    has_tiny_perp = perp_norm[:, 0] < 1e-6  # Particles too close to z-axis
+    is_problematic = is_too_close | has_tiny_perp
+    
+    # Apply safety condition: zero velocity for problematic particles
+    velocities = jnp.where(
+        is_problematic[:, None],  # Condition broadcasted to 3D
+        jnp.zeros_like(velocities),  # Zero velocity if problematic
+        velocities  # Original velocity otherwise
+    )
     
     return velocities
-
 
 def initialize_circular_velocities_gaussian(positions, vel_params, G, m_part, pos_params):
     """
@@ -274,22 +294,50 @@ def initialize_circular_velocities_gaussian(positions, vel_params, G, m_part, po
     rel_pos = positions - center
     
     # Calculate radial distances
-    r = jnp.linalg.norm(rel_pos, axis=1) + 1e-8
+    r = jnp.linalg.norm(rel_pos, axis=1)
+    
+    # SAFETY MEASURE 1: Safe guard against very small radii
+    r_min = 0.1 * sigma  # Scale with blob size
+    r_safe = jnp.maximum(r, r_min)
     
     # Calculate enclosed mass using the Gaussian profile
     from utils import blob_enclosed_mass_gaussian
-    M_enclosed = blob_enclosed_mass_gaussian(r, M, sigma)
+    M_enclosed = blob_enclosed_mass_gaussian(r_safe, M, sigma)
+    
+    # SAFETY MEASURE: Ensure minimum enclosed mass
+    M_enclosed = jnp.maximum(M_enclosed, 0.01 * M)
     
     # Calculate circular velocity magnitude
-    v_circ = jnp.sqrt(G * M_enclosed / r) * vel_factor
+    v_circ = jnp.sqrt(G * M_enclosed / r_safe) * vel_factor
+    
+    # SAFETY MEASURE 2: Cap maximum velocity
+    v_max = 10.0
+    v_circ = jnp.minimum(v_circ, v_max)
     
     # Compute direction perpendicular to radius vector in the x-y plane
     z_axis = jnp.array([0.0, 0.0, 1.0])
     perp = jnp.cross(rel_pos, z_axis)
-    perp = perp / (jnp.linalg.norm(perp, axis=1, keepdims=True) + 1e-8)
+    
+    # SAFETY MEASURE 3: Safe normalization of perpendicular vector
+    perp_norm = jnp.linalg.norm(perp, axis=1, keepdims=True)
+    perp_norm_safe = jnp.maximum(perp_norm, 1e-6)
+    perp_normalized = perp / perp_norm_safe
     
     # Set velocities
-    velocities = v_circ[:, None] * perp
+    velocities = v_circ[:, None] * perp_normalized
+    
+    # SAFETY MEASURE 4: Zero velocity for particles too close to center or with problematic geometry
+    is_too_close = r < r_min
+    has_tiny_perp = jnp.linalg.norm(perp, axis=1) < 1e-6
+    has_extreme_velocity = v_circ > v_max * 0.99
+    is_problematic = is_too_close | has_tiny_perp | has_extreme_velocity
+    
+    # Apply safety condition: zero velocity for problematic particles
+    velocities = jnp.where(
+        is_problematic[:, None],
+        jnp.zeros_like(velocities),
+        velocities
+    )
     
     return velocities
 
@@ -326,16 +374,48 @@ def initialize_circular_velocities_nfw(positions, vel_params, G, m_part, pos_par
     center = jnp.mean(positions, axis=0)
     M = n_part * m_part
     rel_pos = positions - center
-    r = jnp.linalg.norm(rel_pos, axis=1) + 1e-8
+    r = jnp.linalg.norm(rel_pos, axis=1)
+    
+    # SAFETY MEASURE 1: Safe guard against very small radii
+    r_min = 0.01 * rs  # Scale with NFW scale radius
+    r_max = c * rs     # Virial radius
+    r_safe = jnp.clip(r, r_min, r_max)
 
     from utils import blob_enclosed_mass_nfw
-    M_enclosed = blob_enclosed_mass_nfw(r, M, rs, c)
-    v_circ = jnp.sqrt(G * M_enclosed / r) * vel_factor
+    M_enclosed = blob_enclosed_mass_nfw(r_safe, M, rs, c)
+    
+    # SAFETY MEASURE: Ensure minimum enclosed mass
+    M_enclosed = jnp.maximum(M_enclosed, 0.01 * M)
+    
+    v_circ = jnp.sqrt(G * M_enclosed / r_safe) * vel_factor
+    
+    # SAFETY MEASURE 2: Cap maximum velocity
+    v_max = 10.0
+    v_circ = jnp.minimum(v_circ, v_max)
 
     z_axis = jnp.array([0.0, 0.0, 1.0])
     perp = jnp.cross(rel_pos, z_axis)
-    perp = perp / (jnp.linalg.norm(perp, axis=1, keepdims=True) + 1e-8)
-    velocities = v_circ[:, None] * perp
+    
+    # SAFETY MEASURE 3: Safe normalization of perpendicular vector
+    perp_norm = jnp.linalg.norm(perp, axis=1, keepdims=True)
+    perp_norm_safe = jnp.maximum(perp_norm, 1e-6)
+    perp_normalized = perp / perp_norm_safe
+    
+    velocities = v_circ[:, None] * perp_normalized
+    
+    # SAFETY MEASURE 4: Zero velocity for particles too close to center or with problematic geometry
+    is_too_close = r < r_min
+    is_too_far = r > r_max
+    has_tiny_perp = jnp.linalg.norm(perp, axis=1) < 1e-6
+    has_extreme_velocity = v_circ > v_max * 0.99
+    is_problematic = is_too_close | is_too_far | has_tiny_perp | has_extreme_velocity
+    
+    # Apply safety condition: zero velocity for problematic particles
+    velocities = jnp.where(
+        is_problematic[:, None],
+        jnp.zeros_like(velocities),
+        velocities
+    )
 
     return velocities
 
