@@ -1,7 +1,7 @@
 # run_experiment.py
 
 import os
-os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "1.0" # Set memory fraction to 100% for JAX
+#os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "1.0" # Set memory fraction to 100% for JAX
 
 import yaml
 import datetime  # Added for date-time based directory naming

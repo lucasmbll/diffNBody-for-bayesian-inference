@@ -348,17 +348,6 @@ def plot_timesteps(sol,
     return fig, axes
 
 def plot_trajectories(solution, G, tf, dt, length, n_part, num_trajectories=10, figsize=(20, 5), zoom=True, padding=0.1, smooth_window=5):    
-    def smooth_trajectory(traj, window):
-        if window < 2:
-            return traj
-        kernel = np.ones(window) / window
-        traj_padded = np.pad(traj, ((window//2, window-1-window//2), (0,0)), mode='edge')
-        smoothed = np.vstack([
-            np.convolve(traj_padded[:, dim], kernel, mode='valid')
-            for dim in range(traj.shape[1])
-        ]).T
-        return smoothed
-
     positions = solution.ys[:, 0]
     num_steps, n_particles, _ = positions.shape
 
@@ -409,6 +398,7 @@ def plot_trajectories(solution, G, tf, dt, length, n_part, num_trajectories=10, 
     for i, p_idx in enumerate(trajectory_indices):
         traj = positions[:, p_idx]
         if num_steps < 4 * length:
+            from utils import smooth_trajectory
             traj = smooth_trajectory(traj, window=smooth_window)
             ax_3d_title += f' (smoothed, window={smooth_window})'
         ax_3d.set_title(ax_3d_title)
@@ -680,10 +670,8 @@ def create_video(
     sol, length, G, t_f, dt, n_part, density_scaling, softening=0.1, m_part=1.0, 
     enable_energy_tracking=True, save_path=None, fps=10, dpi=100, energy_data=None
 ):
-    import matplotlib.pyplot as plt
     import matplotlib.animation as animation
     import shutil
-    import numpy as np
 
     # Check ffmpeg
     if not shutil.which('ffmpeg'):

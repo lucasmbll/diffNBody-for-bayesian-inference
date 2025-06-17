@@ -7,7 +7,8 @@ configs/old_configs/
 configs/sampling/
 configs/multiple
 configs/multiple_1
-
+configs/test
+old_code/
 
 UPLOAD_INSTRUCTIONS.txt
 src/plotting_after_saved.py

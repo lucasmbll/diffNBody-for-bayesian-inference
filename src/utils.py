@@ -2,6 +2,7 @@
 
 import jax.numpy as jnp
 from jax.scipy.special import erf
+import numpy as np
 
 def calculate_energy(pos, vel, G, length, softening, m_part):
     """Calculate kinetic, potential, and total energy of the system"""
@@ -204,3 +205,15 @@ def format_initial_pos(param_name, initial_position):
         return f"Init: [{', '.join([f'{x:.2f}' for x in init_val])}]"
     else:
         return f"Init: {init_val}"
+
+def smooth_trajectory(traj, window):
+        if window < 2:
+            return traj
+        kernel = np.ones(window) / window
+        traj_padded = np.pad(traj, ((window//2, window-1-window//2), (0,0)), mode='edge')
+        smoothed = np.vstack([
+            np.convolve(traj_padded[:, dim], kernel, mode='valid')
+            for dim in range(traj.shape[1])
+        ]).T
+        return smoothed
+
