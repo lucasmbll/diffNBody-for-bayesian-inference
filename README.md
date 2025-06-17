@@ -81,6 +81,29 @@ This will:
 - Run MCMC sampling to infer parameters from the data.
 - Save outputs (samples, traces, plots) to the results directory.
 
+### Run multiple sampling sequantially
+
+1. Run specific config
+
+```
+cd /home/lucasm/Files/DiffNBody-main/nbody-inverse-sampling/src
+python run_batch_experiments.py --configs ../configs/sampling/config1.yaml ../configs/sampling/config2.yaml ../configs/sampling/config3.yaml
+```
+
+2. Run all config files in a directory:
+```
+python run_batch_experiments.py --config-dir ../configs/sampling/
+```
+
+3. Run configs listed in a text file:
+```
+# Create a file with config paths
+echo "../configs/sampling/test_sampling.yaml" > config_list.txt
+echo "../configs/sampling/another_config.yaml" >> config_list.txt
+
+python run_batch_experiments.py --config-list config_list.txt
+```
+
 ## Configuration Files
 
 ### Simulation Mode

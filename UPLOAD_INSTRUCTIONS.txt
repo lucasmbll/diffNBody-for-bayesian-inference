@@ -25,12 +25,12 @@ re attach : tmux attach -t mysession OR IF ONLY ONE SESSION tmux a
 list all sessions : tmux ls
 
 kill a session : tmux kill-session -t mysession
-tmux kill-session -t sim1blob
+tmux kill-session -t sampling_1
 
 python src/run_experiments.py --config configs/default_sim.yaml
 
 python src/run_experiments.py --config configs/sampling/test_sim.yaml
-python src/run_experiments.py --config configs/test_sampling.yaml
+python src/run_experiments.py --config configs/sampling/debug_sampling.yaml
 python src/run_experiments.py --config configs/test_sampling.yaml
 python src/run_experiments.py --config configs/default_sim.yaml
 
@@ -53,5 +53,37 @@ for name in samples.files:
     print(f'{name}: shape={data.shape}, mean={np.mean(data, axis=0)}, std={np.std(data, axis=0)}')
 "
 
-python src/plotting_after_saved.py --samples results/sampling_results/test_sampling_20250613_215328/samples.npz --init_params results/sampling_results/test_sampling_20250613_215328/init_params.yaml --config configs/test_sampling.yaml
-python src/plotting_after_saved.py --samples results/sampling_results/test_sampling_20250613_213809/samples.npz --init_params results/sampling_results/test_sampling_20250613_213809/init_params.yaml --config configs/test_sampling.yaml
+
+python test/test_likelihood.py --config configs/sampling/test_sampling.yaml --sigma_min 2 --sigma_max 15 --n_points 100
+
+python src/run_batch_experiments.py --config-dir configs/multiple/
+
+#List of plotting_after_saved
+
+
+
+python src/run_experiments.py --config configs/sampling/test_sampling_2blobs.yaml
+
+
+
+
+
+
+python src/plotting_after_saved.py --samples results/sampling_results/test_sampling_20250617_003021/samples.npz --config results/sampling_results/test_sampling_20250617_003021/config.yaml
+
+
+
+
+python src/plotting_after_saved.py --samples results/sampling_results/test_sampling_20250617_014010/samples.npz --config results/sampling_results/test_sampling_20250617_014010/config.yaml
+
+python src/plotting_after_saved.py --samples results/sampling_results/test_sampling_20250616_123759/samples.npz --config results/sampling_results/test_sampling_20250616_123759/config.yaml
+
+python src/plotting_after_saved.py --samples results/sampling_results/test_sampling_20250616_152059/samples.npz --config results/sampling_results/test_sampling_20250616_152059/config.yaml
+python src/plotting_after_saved.py --samples results/sampling_results/test_sampling_20250616_223441/samples.npz --config results/sampling_results/test_sampling_20250616_223441/config.yaml
+python src/plotting_after_saved.py --samples results/sampling_results/test_sampling_20250616_223650/samples.npz --config results/sampling_results/test_sampling_20250616_223650/config.yaml
+python src/plotting_after_saved.py --samples results/sampling_results/test_sampling_20250616_232754/samples.npz --config results/sampling_results/test_sampling_20250616_232754/config.yaml
+python src/plotting_after_saved.py --samples results/sampling_results/test_sampling_20250616_234726/samples.npz --config results/sampling_results/test_sampling_20250616_234726/config.yaml
+python src/plotting_after_saved.py --samples results/sampling_results/test_sampling_20250617_010240/samples.npz --config results/sampling_results/test_sampling_20250617_010240/config.yaml
+python src/plotting_after_saved.py --samples results/sampling_results/test_sampling_20250617_011024/samples.npz --config results/sampling_results/test_sampling_20250617_011024/config.yaml
+python src/plotting_after_saved.py --samples results/sampling_results/test_sampling_20250617_013300/samples.npz --config results/sampling_results/test_sampling_20250617_013300/config.yaml
+python src/plotting_after_saved.py --samples results/sampling_results/test_sampling_20250617_062017/samples.npz --config results/sampling_results/test_sampling_20250617_062017/config.yaml

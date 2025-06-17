@@ -30,7 +30,7 @@ def fix_sample_shape(samples_dict):
     
     return fixed_samples
 
-def plot_from_saved_samples(samples_path, init_params_path, config_path=None, output_dir=None):
+def plot_from_saved_samples(samples_path, config_path):
     """
     Load saved samples and generate corner and trace plots.
     
@@ -38,12 +38,8 @@ def plot_from_saved_samples(samples_path, init_params_path, config_path=None, ou
     -----------
     samples_path : str
         Path to the .npz file with saved samples
-    init_params_path : str
-        Path to the init_params.yaml file with true parameter values
     config_path : str, optional
         Path to the original config file (only needed for model params like G, length, etc.)
-    output_dir : str, optional
-        Directory to save plots. If None, saves in same directory as samples
     """
     # Load samples
     samples_data = np.load(samples_path)
@@ -53,33 +49,24 @@ def plot_from_saved_samples(samples_path, init_params_path, config_path=None, ou
     samples_dict = fix_sample_shape(samples_dict)
     
     # Load true parameters from init_params.yaml
-    with open(init_params_path, "r") as f:
-        init_params_data = yaml.safe_load(f)
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f)
     
-    blobs_params = init_params_data["blobs_params"]
+    model_params = config["model_params"]
+    G = model_params.get("G", 5.0)
+    length = model_params.get("length", 64)
+    softening = model_params.get("softening", 0.1)
+    t_f = model_params.get("t_f", 1.0)
+    dt = model_params.get("dt", 0.5)
+    sampler = config.get("sampler", "nuts")
+    burnin = config.get("num_warmup", 1000)
     
-    # If config is provided, use it for model parameters, otherwise use defaults
-    if config_path:
-        with open(config_path, "r") as f:
-            config = yaml.safe_load(f)
-        model_params = config["model_params"]
-        G = model_params.get("G", 5.0)
-        length = model_params.get("length", 64)
-        softening = model_params.get("softening", 0.1)
-        t_f = model_params.get("t_f", 1.0)
-        dt = model_params.get("dt", 0.5)
-        sampler = config.get("sampler", "nuts")
-        burnin = config.get("num_warmup", 1000)
-    else:
-        # Use default values
-        G = 5.0
-        length = 64
-        softening = 0.1
-        t_f = 1.0
-        dt = 0.5
-        sampler = "nuts"
-        burnin = 1000
+    # Extract prior and initial position information
+    prior_params = config.get("prior_params", {})
+    initial_position = config.get("initial_position", {})
+    prior_type = config.get("prior_type", "unknown")
     
+    blobs_params = model_params["blobs_params"]
     n_part = sum(blob['n_part'] for blob in blobs_params)
     
     # Extract true values from blobs_params
@@ -114,9 +101,49 @@ def plot_from_saved_samples(samples_path, init_params_path, config_path=None, ou
     
     param_order = tuple(inferred_keys)
     
-    # Set output directory
-    if output_dir is None:
-        output_dir = os.path.dirname(samples_path)
+    # Create additional info strings for suptitles
+    def format_prior_info(param_name, prior_params, prior_type):
+        """Format prior information for a parameter."""
+        if param_name not in prior_params:
+            return "No prior"
+        
+        prior_info = prior_params[param_name]
+        if prior_type == "blob_gaussian":
+            if isinstance(prior_info.get('mu'), list):
+                mu_str = f"[{', '.join([f'{x:.1f}' for x in prior_info['mu']])}]"
+            else:
+                mu_str = f"{prior_info.get('mu', 'N/A')}"
+            return f"Prior: N({mu_str}, {prior_info.get('sigma', 'N/A')})"
+        elif prior_type == "blob_uniform":
+            if isinstance(prior_info.get('low'), list):
+                low_str = f"[{', '.join([f'{x:.1f}' for x in prior_info['low']])}]"
+                high_str = f"[{', '.join([f'{x:.1f}' for x in prior_info['high']])}]"
+            else:
+                low_str = f"{prior_info.get('low', 'N/A')}"
+                high_str = f"{prior_info.get('high', 'N/A')}"
+            return f"Prior: U({low_str}, {high_str})"
+        else:
+            return f"Prior: {prior_type}"
+    
+    def format_initial_pos(param_name, initial_position):
+        """Format initial position for a parameter."""
+        if param_name not in initial_position:
+            return "No init"
+        
+        init_val = initial_position[param_name]
+        if isinstance(init_val, list):
+            return f"Init: [{', '.join([f'{x:.1f}' for x in init_val])}]"
+        else:
+            return f"Init: {init_val}"
+    
+    # Build info strings for each parameter
+    param_info = {}
+    for param_name in inferred_keys:
+        prior_str = format_prior_info(param_name, prior_params, prior_type)
+        init_str = format_initial_pos(param_name, initial_position)
+        param_info[param_name] = f"{prior_str} | {init_str}"
+    
+    output_dir = os.path.dirname(samples_path)
     
     print(f"Found parameters: {list(theta.keys())}")
     print(f"True values: {theta}")
@@ -124,15 +151,29 @@ def plot_from_saved_samples(samples_path, init_params_path, config_path=None, ou
     
     # Generate trace plot
     print("Generating trace plot...")
-    fig, _ = plot_trace_subplots(
+    fig, axes = plot_trace_subplots(
         samples_dict,
         theta=theta,
         G=G, t_f=t_f, dt=dt, softening=softening, length=length, n_part=n_part,
         method=sampler,
         param_order=param_order
     )
+    
+    # Add prior and initial position info to trace plot suptitle
+    trace_info_lines = []
+    for param_name in param_order:
+        trace_info_lines.append(f"{param_name}: {param_info[param_name]}")
+    
+    # Get existing suptitle and add info
+    existing_suptitle = fig._suptitle.get_text() if fig._suptitle else "Trace Plot"
+    new_suptitle = f"{existing_suptitle}\n" + " | ".join(trace_info_lines[:2])  # Limit to first 2 params to avoid overcrowding
+    if len(trace_info_lines) > 2:
+        new_suptitle += f"\n" + " | ".join(trace_info_lines[2:])
+    
+    fig.suptitle(new_suptitle, fontsize=10)
+    
     trace_path = os.path.join(output_dir, "trace_plot_regenerated.png")
-    fig.savefig(trace_path)
+    fig.savefig(trace_path, bbox_inches='tight')
     print(f"Trace plot saved to: {trace_path}")
     
     # Generate corner plot
@@ -145,16 +186,28 @@ def plot_from_saved_samples(samples_path, init_params_path, config_path=None, ou
         burnin=burnin,
         param_order=param_order
     )
+    
+    # Add prior and initial position info to corner plot suptitle
+    corner_info_lines = []
+    for param_name in param_order:
+        corner_info_lines.append(f"{param_name}: {param_info[param_name]}")
+    
+    # Get existing suptitle and add info
+    existing_suptitle = fig._suptitle.get_text() if fig._suptitle else "Corner Plot"
+    new_suptitle = f"{existing_suptitle}\n" + " | ".join(corner_info_lines[:2])  # Limit to first 2 params
+    if len(corner_info_lines) > 2:
+        new_suptitle += f"\n" + " | ".join(corner_info_lines[2:])
+    
+    fig.suptitle(new_suptitle, fontsize=10)
+    
     corner_path = os.path.join(output_dir, "corner_plot_regenerated.png")
-    fig.savefig(corner_path)
+    fig.savefig(corner_path, bbox_inches='tight')
     print(f"Corner plot saved to: {corner_path}")
-
+    
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate plots from saved MCMC samples")
     parser.add_argument("--samples", type=str, required=True, help="Path to .npz file with samples")
-    parser.add_argument("--init_params", type=str, required=True, help="Path to init_params.yaml file")
-    parser.add_argument("--config", type=str, help="Path to original config file (optional, for model params)")
-    parser.add_argument("--output", type=str, help="Output directory for plots (optional)")
+    parser.add_argument("--config", type=str, required=True, help="Path to original config file (optional, for model params)")
     
     args = parser.parse_args()
-    plot_from_saved_samples(args.samples, args.init_params, args.config, args.output)
+    plot_from_saved_samples(args.samples, args.config)

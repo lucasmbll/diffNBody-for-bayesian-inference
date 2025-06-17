@@ -684,7 +684,6 @@ def create_video(
     import matplotlib.animation as animation
     import shutil
     import numpy as np
-    import jax.numpy as jnp
 
     # Check ffmpeg
     if not shutil.which('ffmpeg'):
@@ -988,7 +987,7 @@ def plot_trace_subplots(mcmc_samples, theta, G, t_f, dt, softening, length, n_pa
         fig.savefig(save_path)
     return fig, axes
 
-def plot_corner_after_burnin(mcmc_samples, theta, G, t_f, dt, softening, length, n_part, method, burnin, param_order, save_path=None):
+def plot_corner_after_burnin(mcmc_samples, theta, G, t_f, dt, softening, length, n_part, method, param_order, burnin=0, save_path=None):
     """
     Plot corner plot for MCMC samples with blob parameters.
     """    

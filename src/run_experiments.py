@@ -72,7 +72,7 @@ def main(config_path):
     n_part = sum(blob['n_part'] for blob in blobs_params)
 
     # Run model to generate mock data
-    input_field, init_pos, final_pos, output_field, sol, init_params = model_fn(
+    input_field, init_pos, final_pos, output_field, sol = model_fn(
         blobs_params,
         G=G,
         length=length,
@@ -184,16 +184,23 @@ def main(config_path):
         print("Simulation completed.")
         return
 
-    # --- Sampling part ---
+    # --- SAMPLING ---
     from likelihood import get_log_posterior
     from sampling import run_hmc, run_nuts, extract_params_to_infer
+    from utils import extract_true_values_from_blobs
 
+    print('Starting sampling process...')
+    # Prior
     prior_type = config.get("prior_type", None)
     prior_params = config.get("prior_params", None)
     if prior_params is None or prior_type is None:
         raise ValueError("No prior specified in config file. Please provide 'prior_params' and 'prior_type' in your configuration.")
     
-    # Prepare model arguments for likelihood
+    # Likelihood
+    likelihood_type = config.get("likelihood_type", None)
+    likelihood_kwargs = config.get("likelihood_kwargs", {})
+    if likelihood_type is None:
+        raise ValueError("No likelihood type specified in config file. Please provide 'likelihood_type' in your configuration.")
     model_kwargs = {
         "G": G,
         "length": length,
@@ -205,44 +212,42 @@ def main(config_path):
         **scaling_kwargs
     }
     
+    # Posterior
     log_posterior = get_log_posterior(
-        config["likelihood_type"], 
+        likelihood_type, 
         data, 
         prior_params=prior_params,
         prior_type=prior_type,
         model_fn=model_fn,
-        init_params=init_params,
+        init_params=blobs_params,
         **model_kwargs,
-        **config.get("likelihood_kwargs", {})
+        **likelihood_kwargs
     )
 
-    # Initialize parameters for sampling
+    # Sampling initialization
     initial_position = config.get("initial_position", None)
     if initial_position is None:
-        print("No initial position specified. Using default values from init_params...")
-        # Only include parameters that have priors defined
-        available_params = extract_params_to_infer(init_params)
-        initial_position = {k: v for k, v in available_params.items() if k in prior_params}
-        print(f"Auto-generated initial position: {list(initial_position.keys())}")
-    
-        # Add after initial_position is created
+        raise ValueError("No initial position specified in config file. Please provide 'initial_position' in your configuration.")
+    rng_key = jax.random.PRNGKey(config.get("sampling_seed", 12345))
+    num_samples = config.get("num_samples", 1000)
+    progress_bar = config.get("progress_bar", False)
+
+    # Sanity check
     print("="*50)
     print("PARAMETER SAMPLING VERIFICATION")
     print("="*50)
-    all_possible_params = extract_params_to_infer(init_params)
+    all_possible_params = extract_params_to_infer(blobs_params)
     print(f"All possible parameters: {list(all_possible_params.keys())}")
     print(f"Parameters with priors: {list(prior_params.keys())}")
     print(f"Parameters being sampled: {list(initial_position.keys())}")
     print(f"Fixed parameters: {set(all_possible_params.keys()) - set(initial_position.keys())}")
 
-    rng_key = jax.random.PRNGKey(config.get("sampling_seed", 12345))
-    num_samples = config.get("num_samples", 500)
-    progress_bar = config.get("progress_bar", False)
+    # Run the sampler
     if config["sampler"] == "hmc":
+        print("Running HMC sampler...")
         inv_mass_matrix = np.array(config["inv_mass_matrix"])
         step_size = config.get("step_size", 1e-3)
         num_integration_steps = config.get("num_integration_steps", 50)
-        print(f"HMC parameters: step_size={step_size}, num_integration_steps={num_integration_steps}")
         samples = run_hmc(
             log_posterior,
             initial_position,
@@ -251,9 +256,11 @@ def main(config_path):
             num_integration_steps,
             rng_key,
             num_samples,
-            progress_bar=progress_bar  # Pass progress_bar
+            progress_bar=progress_bar
         )
+
     elif config["sampler"] == "nuts":
+        print("Running NUTS sampler...")
         num_warmup = config.get("num_warmup", 1000)
         samples = run_nuts(
             log_posterior,
@@ -261,72 +268,54 @@ def main(config_path):
             rng_key,
             num_samples,
             num_warmup,
-            progress_bar=progress_bar  # Pass progress_bar
+            progress_bar=progress_bar  
         )
+    
     else:
         raise ValueError("Unknown sampler: should be 'hmc' or 'nuts'")
     print("Sampling finished.")
+    
+    samples_dict = {}
+    for key, value in samples.items():
+        if isinstance(value, list) and all(hasattr(v, 'ndim') for v in value):
+            # Stack list of arrays into a single 2D array
+            samples_dict[key] = jnp.stack(value, axis=1)
+        else:
+            # Keep as is for scalar parameters
+            samples_dict[key] = value
+    
+    np.savez(os.path.join(base_dir, "samples.npz"), **{k: np.array(v) for k, v in samples_dict.items()})
+    print(f"Results saved to {os.path.join(base_dir, 'samples.npz')}")   
 
-    #  Save sampling results
-    if not isinstance(samples, dict):
-        raise ValueError("Expected sampling result to be a dict of parameter arrays.")
-
-    samples_dict = {k: np.array(v) for k, v in samples.items()}
     inferred_keys = list(samples_dict.keys())
 
-    # Build theta dict with true values extracted from blobs_params
     theta = {}
-    blobs_params = model_params.get("blobs_params", [])
-
-    def extract_true_values_from_blobs(blobs_params):
-        """Extract true parameter values from blobs_params configuration."""
-        true_values = {}
-        
-        for blob_idx, blob in enumerate(blobs_params):
-            # Extract position parameters
-            if blob['pos_type'] == 'gaussian':
-                true_values[f"blob{blob_idx}_sigma"] = blob['pos_params']['sigma']
-                true_values[f"blob{blob_idx}_center"] = blob['pos_params']['center']
-            elif blob['pos_type'] == 'nfw':
-                true_values[f"blob{blob_idx}_rs"] = blob['pos_params']['rs']
-                true_values[f"blob{blob_idx}_c"] = blob['pos_params']['c']
-                true_values[f"blob{blob_idx}_center"] = blob['pos_params']['center']
-            
-            # Extract velocity parameters
-            if blob['vel_type'] == 'cold':
-                if 'vel_dispersion' in blob['vel_params']:
-                    true_values[f"blob{blob_idx}_vel_dispersion"] = blob['vel_params']['vel_dispersion']
-            elif blob['vel_type'] == 'virial':
-                if 'virial_ratio' in blob['vel_params']:
-                    true_values[f"blob{blob_idx}_virial_ratio"] = blob['vel_params']['virial_ratio']
-            elif blob['vel_type'] == 'circular':
-                if 'vel_factor' in blob['vel_params']:
-                    true_values[f"blob{blob_idx}_vel_factor"] = blob['vel_params']['vel_factor']
-        
-        return true_values
-
-    # Extract true values
     all_true_values = extract_true_values_from_blobs(blobs_params)
-
     # Build theta dict for only the parameters that were actually sampled
     for key in inferred_keys:
         if key in all_true_values:
             theta[key] = all_true_values[key]
-            print(f"✅ True value for '{key}': {all_true_values[key]}")
         else:
             theta[key] = None
             print(f"⚠️  Warning: No true value found for '{key}' in blobs_params.")
 
     param_order = tuple(inferred_keys)
 
-    if isinstance(samples, dict):
-        np.savez(os.path.join(base_dir, "samples.npz"), **{k: np.array(v) for k, v in samples.items()})
-    else:
-        np.savez(os.path.join(base_dir, "samples.npz"), samples=np.array(samples))
-    print(f"Results saved to {os.path.join(base_dir, 'samples.npz')}")
-
-    # Generate plots
+    # Sampling plots
     from plotting import plot_trace_subplots, plot_corner_after_burnin
+    from utils import format_prior_info, format_initial_pos
+
+    # Build info strings for each parameter
+    param_info = {}
+    for param_name in inferred_keys:
+        prior_str = format_prior_info(param_name, prior_params, prior_type)
+        init_str = format_initial_pos(param_name, initial_position)
+        param_info[param_name] = f"{prior_str} | {init_str}"
+
+    # Create a list of strings for the suptitle
+    info_lines = [f"{param}: {info}" for param, info in param_info.items()]
+    max_per_line = 1
+    lines = [" | ".join(info_lines[i:i+max_per_line]) for i in range(0, len(info_lines), max_per_line)]
 
     fig, _ = plot_trace_subplots(
         samples_dict,
@@ -335,6 +324,9 @@ def main(config_path):
         method=config["sampler"],
         param_order=param_order
     )
+    existing_suptitle = fig._suptitle.get_text() if fig._suptitle else "Trace Plot"
+    new_suptitle = existing_suptitle + "\n" + "\n".join(lines)
+    fig.suptitle(new_suptitle, fontsize=10)
     fig.savefig(os.path.join(base_dir, "trace_sampling.png"))
     print("Trace plot saved.")
 
@@ -343,12 +335,15 @@ def main(config_path):
         theta=theta,
         G=G, t_f=t_f, dt=dt, softening=softening, length=length, n_part=n_part,
         method=config["sampler"],
-        burnin=config.get("num_warmup", 1000),
-        param_order=param_order
+        param_order=param_order,
+        burnin=num_warmup if config["sampler"] == "nuts" else 0
     )
+    existing_suptitle = fig._suptitle.get_text() if fig._suptitle else "Corner Plot"
+    new_suptitle = existing_suptitle + "\n" + "\n".join(lines)
+    fig.suptitle(new_suptitle, fontsize=10)
     fig.savefig(os.path.join(base_dir, "corner_sampling.png"))
     print("Corner plot saved.")
-
+    
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run MCMC sampling for N-body initial distribution parameters inference")
     parser.add_argument("--config", type=str, required=True, help="Path to YAML config file")

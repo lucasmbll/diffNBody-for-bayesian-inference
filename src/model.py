@@ -79,8 +79,6 @@ def model(
         Scaled output density field
     sol : diffrax solution object
         Solution of the N-body simulation
-    init_params : list of dict
-        Initial parameters used for the blobs (for inference)
     """
     grid_shape = (length, length, length)
 
@@ -88,7 +86,7 @@ def model(
     if key is None:
         key = jax.random.PRNGKey(0)
     
-    init_pos, init_vel, init_params = initialize_blobs(blobs_params, length, G, m_part, key)
+    init_pos, init_vel = initialize_blobs(blobs_params, length, G, m_part, key)
     
     # Create raw density fields
     raw_input_field = cic_paint(jnp.zeros(grid_shape), init_pos)
@@ -120,5 +118,5 @@ def model(
     input_field = apply_density_scaling(raw_input_field, density_scaling, **scaling_kwargs)
     output_field = apply_density_scaling(raw_output_field, density_scaling, **scaling_kwargs)
     
-    return input_field, init_pos, final_pos, output_field, sol, init_params
+    return input_field, init_pos, final_pos, output_field, sol
 

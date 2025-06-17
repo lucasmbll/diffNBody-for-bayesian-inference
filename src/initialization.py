@@ -529,5 +529,5 @@ def initialize_blobs(blobs_params, length, G, m_part, key=None):
     positions = jnp.concatenate(all_positions, axis=0)
     velocities = jnp.concatenate(all_velocities, axis=0)
     
-    return positions, velocities, blobs_params
+    return positions, velocities
 

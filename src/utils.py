@@ -147,3 +147,60 @@ def approx_inverse_nfw_cdf(x, rs, c):
     q = x * (1 - a) + a
     r = rs * (q**(-1.0/p) - 1.0) / (1.0 - q**(-1.0/p) / c)
     return r
+
+def extract_true_values_from_blobs(blobs_params):
+        """Extract true parameter values from blobs_params configuration."""
+        true_values = {}
+        
+        for blob_idx, blob in enumerate(blobs_params):
+            # Extract position parameters
+            if blob['pos_type'] == 'gaussian':
+                true_values[f"blob{blob_idx}_sigma"] = blob['pos_params']['sigma']
+                true_values[f"blob{blob_idx}_center"] = blob['pos_params']['center']
+            elif blob['pos_type'] == 'nfw':
+                true_values[f"blob{blob_idx}_rs"] = blob['pos_params']['rs']
+                true_values[f"blob{blob_idx}_c"] = blob['pos_params']['c']
+                true_values[f"blob{blob_idx}_center"] = blob['pos_params']['center']
+            
+            # Extract velocity parameters
+            if blob['vel_type'] == 'cold':
+                if 'vel_dispersion' in blob['vel_params']:
+                    true_values[f"blob{blob_idx}_vel_dispersion"] = blob['vel_params']['vel_dispersion']
+            elif blob['vel_type'] == 'virial':
+                if 'virial_ratio' in blob['vel_params']:
+                    true_values[f"blob{blob_idx}_virial_ratio"] = blob['vel_params']['virial_ratio']
+            elif blob['vel_type'] == 'circular':
+                if 'vel_factor' in blob['vel_params']:
+                    true_values[f"blob{blob_idx}_vel_factor"] = blob['vel_params']['vel_factor']
+        
+        return true_values
+
+def format_prior_info(param_name, prior_params, prior_type):
+    if param_name not in prior_params:
+        return "No prior"
+    prior_info = prior_params[param_name]
+    if prior_type == "blob_gaussian":
+        if isinstance(prior_info.get('mu'), list):
+            mu_str = f"[{', '.join([f'{x:.2f}' for x in prior_info['mu']])}]"
+        else:
+            mu_str = f"{prior_info.get('mu', 'N/A')}"
+        return f"Prior: N({mu_str}, {prior_info.get('sigma', 'N/A')})"
+    elif prior_type == "blob_uniform":
+        if isinstance(prior_info.get('low'), list):
+            low_str = f"[{', '.join([f'{x:.2f}' for x in prior_info['low']])}]"
+            high_str = f"[{', '.join([f'{x:.2f}' for x in prior_info['high']])}]"
+        else:
+            low_str = f"{prior_info.get('low', 'N/A')}"
+            high_str = f"{prior_info.get('high', 'N/A')}"
+        return f"Prior: U({low_str}, {high_str})"
+    else:
+        return f"Prior: {prior_type}"
+
+def format_initial_pos(param_name, initial_position):
+    if param_name not in initial_position:
+        return "No init"
+    init_val = initial_position[param_name]
+    if isinstance(init_val, list):
+        return f"Init: [{', '.join([f'{x:.2f}' for x in init_val])}]"
+    else:
+        return f"Init: {init_val}"

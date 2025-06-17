@@ -5,6 +5,12 @@ notebooks/
 src/__pycache__/
 configs/old_configs/
 configs/sampling/
+configs/multiple
+configs/multiple_1
 
 
 UPLOAD_INSTRUCTIONS.txt
+src/plotting_after_saved.py
+UPLOAD_INSTRUCTIONS.txt
+Capture d’écran 2025-06-17 à 13.44.55.png
+batch_summary.yaml
