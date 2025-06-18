@@ -1,11 +1,12 @@
 # Configuration for N-body parameter inference using blobs model
 
+# Use with : python src/run_experiments.py --config configs/default_sampling_mala.yaml
+
 # --- HARDWARE/CLUSTER SETTINGS ---
-cuda_visible_devices: 1  # GPU index to use
+cuda_visible_devices: 2  # GPU index to use
 
 # --- EXPERIMENT MODE and MISCELLANEOUS ---
 mode: sampling      # Experiment mode (options: "sim", "sampling")
-progress_bar: false  # Show progress bar during sampling
 
 # --- PLOT & VIDEO SETTINGS ---
 plot_settings:
@@ -33,9 +34,11 @@ model_params:
   length: 64          # Box size
   softening: 1      # Softening length
   t_f: 1.0            # Final time (shorter for sampling)
-  dt: 0.5            # Time step
+  dt: 0.1            # Time step
   m_part: 1.0         # Particle mass
   data_seed: 42       # Random seed for data generation
+  solver: "LeapfrogMidpoint"  # Solver type: "LeapfrogMidpoint", "Dopri5", "Dopri8", "Tsit5"
+  
   
   # Density field scaling options
   density_scaling: "normalize"  # Options: "none", "log", "sqrt", "normalize", "standardize", "power"
@@ -58,7 +61,7 @@ model_params:
 # --- LIKELIHOOD SETTINGS ---
 likelihood_type: ll1   # Options: "ll1", "ll2"
 likelihood_kwargs: 
-  noise: 10  # Standard deviation of instrumental noise
+  noise: 1  # Standard deviation of instrumental noise
 
 
 # --- PRIOR SETTINGS ---
@@ -70,16 +73,28 @@ prior_params:
   #blob0_vel_factor: {mu: 0.3, sigma: 0.3} #REMOVE A PRIOR TO NOT SAMPLE A PARAM
 
 # --- SAMPLER SETTINGS ---
-sampler: nuts           # Options: "hmc" or "nuts"
-num_samples: 2000        # Number of MCMC samples to draw
+sampler: mala           # Metropolis-Adjusted Langevin Algorithm
+num_samples: 2000       # Number of MCMC samples to draw
 sampling_seed: 12345    # Random seed for reproducibility
+num_warmup: 1000
+progress_bar: false      # Show progress bar during sampling
 
-# For NUTS:
-num_warmup: 500       # Number of warmup steps 
-# For HMC:
-step_size: 0.02       
-num_integration_steps: 40
-inv_mass_matrix: [1, 0.04, 100.0]  # Will be automatically adjusted to [1, 0.04] if random_vel=False
+# MALA-specific parameters:
+# Option 1: Single step size for all parameters (current setting)
+step_size: 0.01         # Step size for MALA (smaller than HMC typically)
+
+# Option 2: Parameter-specific step sizes
+# step_size:
+#   blob0_sigma: 0.005
+#   blob0_center: [0.01, 0.01, 0.01]
+#   blob0_vel_factor: 0.002
+
+# Option 3: Adaptive step size tuning (if implemented)
+# adaptive_step_size: true
+# target_acceptance_rate: 0.574  # Optimal for MALA
+
+# Note: MALA uses gradients of the log posterior, so ensure your likelihood
+# and prior functions are differentiable
 
 # Initial position for the sampler - start with values different from the true ones
 initial_position: 

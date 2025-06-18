@@ -27,7 +27,7 @@ list all sessions : tmux ls
 kill a session : tmux kill-session -t mysession
 tmux kill-session -t sampling_1
 
-python src/run_experiments.py --config configs/default_sim.yaml
+python src/run_experiments.py --config configs/test/test_sim.yaml
 
 python src/run_experiments.py --config configs/sampling/test_sim.yaml
 python src/run_experiments.py --config configs/sampling/debug_sampling.yaml
@@ -60,9 +60,9 @@ python src/run_batch_experiments.py --config-dir configs/multiple/
 
 #List of plotting_after_saved
 
+python test/solver_test.py --config configs/test/solver_test_config.yaml
 
-
-python src/run_experiments.py --config configs/sampling/test_sampling_2blobs.yaml
+python src/run_experiments.py --config configs/sampling/configs/default_sampling_mala.yaml.yaml
 
 
 

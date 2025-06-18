@@ -14,7 +14,7 @@ from utils import calculate_energy
 
 ### Plotting functions for DiffNBody simulations
 
-def plot_density_fields_and_positions(G, tf, dt, length, n_part, input_field, init_pos, final_pos, output_field, density_scaling, save_path=None):
+def plot_density_fields_and_positions(G, tf, dt, length, n_part, input_field, init_pos, final_pos, output_field, density_scaling, solver, save_path=None):
     """
     Plot density fields and particle positions in various projections.
 
@@ -36,7 +36,7 @@ def plot_density_fields_and_positions(G, tf, dt, length, n_part, input_field, in
     gs = plt.GridSpec(4, 4, figure=fig)
 
     title = 'Simulation with parameters:'
-    param_info = f'G={G}, tf={tf}, dt={dt}, L={length}, N={n_part}, density_scaling={density_scaling}'
+    param_info = f'G={G}, tf={tf}, dt={dt}, L={length}, N={n_part}, density_scaling={density_scaling}, solver={solver}'
 
     title += f'\n{param_info}'
     # Place suptitle at the very top
@@ -199,6 +199,7 @@ def plot_timesteps(sol,
                    n_part,
                    softening,
                    m_part,
+                   solver,
                    num_timesteps,
                    s=1,
                    cmap='inferno',
@@ -270,7 +271,7 @@ def plot_timesteps(sol,
     
     # Add global title with simulation parameters
     title = 'Simulation with parameters:'
-    param_info = f'G={G}, tf={tf}, dt={dt}, L={boxL}, N={n_part}, density_scaling={density_scaling}'
+    param_info = f'G={G}, tf={tf}, dt={dt}, L={boxL}, N={n_part}, density_scaling={density_scaling}, solver={solver}'
     if enable_energy_tracking:
         param_info += ', energy_tracking=True'
     
@@ -347,7 +348,7 @@ def plot_timesteps(sol,
     plt.show()
     return fig, axes
 
-def plot_trajectories(solution, G, tf, dt, length, n_part, num_trajectories=10, figsize=(20, 5), zoom=True, padding=0.1, smooth_window=5):    
+def plot_trajectories(solution, G, tf, dt, length, n_part, solver, num_trajectories=10, figsize=(20, 5), zoom=True, padding=0.1, smooth_window=5):    
     positions = solution.ys[:, 0]
     num_steps, n_particles, _ = positions.shape
 
@@ -363,7 +364,7 @@ def plot_trajectories(solution, G, tf, dt, length, n_part, num_trajectories=10, 
     ax_yz = fig.add_subplot(1, 4, 4)
 
     # Create parameter info string
-    param_info = f'G={G}, tf={tf}, dt={dt}, L={length}, N={n_part}'
+    param_info = f'G={G}, tf={tf}, dt={dt}, L={length}, N={n_part}, solver={solver}'
     title = param_info
 
     ax_3d_title = '3D Trajectories'
@@ -394,15 +395,17 @@ def plot_trajectories(solution, G, tf, dt, length, n_part, num_trajectories=10, 
     y_min, y_max = float('inf'), float('-inf')
     z_min, z_max = float('inf'), float('-inf')
     
-
+    if num_steps < 4 * length:
+        from utils import smooth_trajectory
+        smoothing = True
+        ax_3d_title += f' (smoothed, window={smooth_window})'
+    ax_3d.set_title(ax_3d_title)
+    
     for i, p_idx in enumerate(trajectory_indices):
         traj = positions[:, p_idx]
-        if num_steps < 4 * length:
-            from utils import smooth_trajectory
+        if smoothing:
             traj = smooth_trajectory(traj, window=smooth_window)
-            ax_3d_title += f' (smoothed, window={smooth_window})'
-        ax_3d.set_title(ax_3d_title)
-
+    
         x_min = min(x_min, traj[:, 0].min())
         x_max = max(x_max, traj[:, 0].max())
         y_min = min(y_min, traj[:, 1].min())
@@ -480,7 +483,7 @@ def plot_trajectories(solution, G, tf, dt, length, n_part, num_trajectories=10, 
     return fig
 
 
-def plot_velocity_distributions(sol, G, tf, dt, length, n_part, save_path=None, quiver_stride=5):
+def plot_velocity_distributions(sol, G, tf, dt, length, n_part, solver, save_path=None, quiver_stride=5):
     # Calculate velocity norms for initial and final velocities
     init_vel = sol.ys[0, 1]  # Initial velocities
     init_pos = sol.ys[0, 0]  # Initial positions
@@ -492,7 +495,7 @@ def plot_velocity_distributions(sol, G, tf, dt, length, n_part, save_path=None, 
     # Create a figure with 4 rows and 4 columns
     fig, axes = plt.subplots(4, 4, figsize=(24, 18))
     title = 'Velocity Distribution Comparison with parameters:'
-    param_info = f'G={G}, tf={tf}, dt={dt}, L={length}, N={n_part}'
+    param_info = f'G={G}, tf={tf}, dt={dt}, L={length}, N={n_part}, solver={solver}'
     
     title += f'\n{param_info}'
     # Place suptitle at the very top
@@ -667,7 +670,7 @@ def plot_velocity_distributions(sol, G, tf, dt, length, n_part, save_path=None, 
     return fig, axes
 
 def create_video(
-    sol, length, G, t_f, dt, n_part, density_scaling, softening=0.1, m_part=1.0, 
+    sol, length, G, t_f, dt, n_part, density_scaling, solver, softening=0.1, m_part=1.0, 
     enable_energy_tracking=True, save_path=None, fps=10, dpi=100, energy_data=None
 ):
     import matplotlib.animation as animation
@@ -719,7 +722,7 @@ def create_video(
     axes[1, 3] = fig.add_subplot(2, 4, 8)
 
     fig.subplots_adjust(wspace=0.4, hspace=0.5)
-    title = f'N-Body Simulation (G={G}, tf={t_f}, dt={dt}, L={length}, N={n_part})'
+    title = f'N-Body Simulation (G={G}, tf={t_f}, dt={dt}, L={length}, N={n_part}, solver={solver})'
     fig.suptitle(title, y=0.98, fontsize=14)
 
     # --- INITIALIZE PLOTS (frame 0 data) ---

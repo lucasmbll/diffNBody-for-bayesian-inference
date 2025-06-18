@@ -35,6 +35,7 @@ model_params:
   dt: 0.05            # Time step
   m_part: 1.0         # Particle mass
   data_seed: 42       # Random seed for data generation
+  solver: "LeapfrogMidpoint"  # Solver type: "LeapfrogMidpoint", "Dopri5", "Dopri8", "Tsit5"
   
   # Density field scaling options
   density_scaling: "normalize"  # Options: "none", "log", "sqrt", "normalize", "standardize", "power"

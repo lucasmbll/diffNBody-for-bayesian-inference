@@ -2,7 +2,7 @@
 
 import jax
 import jax.numpy as jnp
-from diffrax import diffeqsolve, ODETerm, LeapfrogMidpoint, SaveAt
+from diffrax import diffeqsolve, ODETerm, SaveAt
 from jaxpm.painting import cic_paint
 from initialization import initialize_blobs
 from utils import apply_density_scaling
@@ -37,6 +37,7 @@ def model(
     ts=None,
     key=None,
     density_scaling="none",
+    solver="LeapfrogMidpoint",
     **scaling_kwargs
 ):
     """
@@ -100,7 +101,31 @@ def model(
     max_steps = max(estimated_steps * 2, 10000)  # 2x safety factor, minimum 10k steps
 
     term = ODETerm(make_diffrax_ode(softening=softening, G=G, length=length, m_part=m_part))
-    solver = LeapfrogMidpoint()
+
+    if solver == "LeapfrogMidpoint":
+        from diffrax import LeapfrogMidpoint
+        solver = LeapfrogMidpoint()
+    elif solver == "Dopri5":
+        from diffrax import Dopri5
+        solver = Dopri5()
+    elif solver == "Dopri8":
+        from diffrax import Dopri8
+        solver = Dopri8()
+    elif solver == "Tsit5":
+        from diffrax import Tsit5
+        solver = Tsit5()
+    elif solver == "Heun":
+        from diffrax import Heun
+        solver = Heun()
+    elif solver == "Midpoint":
+        from diffrax import Midpoint
+        solver = Midpoint()
+    elif solver == "Euler":
+        from diffrax import Euler
+        solver = Euler()
+    else:
+        raise ValueError(f"Unknown solver: {solver}")
+    
     sol = diffeqsolve(
         term,
         solver,

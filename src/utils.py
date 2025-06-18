@@ -217,3 +217,30 @@ def smooth_trajectory(traj, window):
         ]).T
         return smoothed
 
+def tune_step_size(sampler_class, log_posterior, initial_position, rng_key, num_trials=200, step_sizes=None):
+    import jax
+    if step_sizes is None:
+        step_sizes = np.logspace(-4, 0, 10)  # e.g. [1e-4, 1e-3, ..., 1.0]
+    best_rate = -1
+    best_step = None
+    for step_size in step_sizes:
+        sampler = sampler_class(log_posterior, step_size)
+        kernel = jax.jit(sampler.step)
+        state = sampler.init(initial_position)
+        keys = jax.random.split(rng_key, num_trials)
+        n_accepts = 0
+        for key in keys:
+            new_state, info = kernel(key, state)
+            if info.is_accepted:
+                n_accepts += 1
+            state = new_state
+        acceptance_rate = n_accepts / num_trials
+        print(f"step_size={step_size:.5f} => acceptance_rate={acceptance_rate:.3f}")
+        # You can implement your selection criteria here.
+        if 0.2 < acceptance_rate < 0.5 and acceptance_rate > best_rate:
+            best_rate = acceptance_rate
+            best_step = step_size
+    print(f"Selected step_size={best_step} with acceptance_rate={best_rate}")
+    return best_step
+
+

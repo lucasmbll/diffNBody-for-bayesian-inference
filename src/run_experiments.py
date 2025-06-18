@@ -55,6 +55,8 @@ def main(config_path):
     t_f = model_params.get("t_f", 1.0)
     dt = model_params.get("dt", 0.5)
     m_part = model_params.get("m_part", 1.0)
+    solver = model_params.get("solver", "LeapfrogMidpoint") 
+
 
     # Random seed
     data_seed = model_params.get("data_seed", 0)
@@ -82,6 +84,7 @@ def main(config_path):
         m_part=m_part,
         key=data_key,
         density_scaling=density_scaling,
+        solver=solver,
         **scaling_kwargs
     )
     
@@ -131,7 +134,7 @@ def main(config_path):
         print("Creating density fields and positions plot...")
         fig = plot_density_fields_and_positions(
             G, t_f, dt, length, n_part, input_field, init_pos, final_pos, output_field, 
-            density_scaling=density_scaling)
+            density_scaling=density_scaling, solver=solver,)
         fig.savefig(os.path.join(base_dir, "density_fields_and_positions.png"))
         print("Density fields and positions plots saved successfully")
     
@@ -139,7 +142,7 @@ def main(config_path):
         from plotting import plot_timesteps
         print("Creating timesteps plot...")
         plot_timesteps_num = config.get("plot_timesteps", 10)
-        fig, _ = plot_timesteps(sol, length, G, t_f, dt, n_part, num_timesteps=plot_timesteps_num, softening=softening, m_part=m_part,
+        fig, _ = plot_timesteps(sol, length, G, t_f, dt, n_part, num_timesteps=plot_timesteps_num, softening=softening, m_part=m_part, solver=solver,
                                 enable_energy_tracking=enable_energy_tracking, density_scaling=density_scaling,
                                 energy_data=energy_data)
         fig.savefig(os.path.join(base_dir, "timesteps.png"))
@@ -150,7 +153,7 @@ def main(config_path):
         print("Creating trajectories plot...")
         num_trajectories = plot_settings['trajectories_plot'].get("num_trajectories", 10)
         zoom = plot_settings['trajectories_plot'].get("zoom_for_trajectories", True)
-        fig = plot_trajectories(sol, G, t_f, dt, length, n_part, num_trajectories=num_trajectories, 
+        fig = plot_trajectories(sol, G, t_f, dt, length, n_part, solver, num_trajectories=num_trajectories, 
                                 zoom=zoom)
         fig.savefig(os.path.join(base_dir, "trajectories.png"))
         print("Trajectories plot saved successfully")
@@ -158,7 +161,7 @@ def main(config_path):
     if plot_settings['velocity_plot'].get("do"):
         from plotting import plot_velocity_distributions
         print("Creating velocity distributions plot...")
-        fig, _ = plot_velocity_distributions(sol, G, t_f, dt, length, n_part)
+        fig, _ = plot_velocity_distributions(sol, G, t_f, dt, length, n_part, solver)
         fig.savefig(os.path.join(base_dir, "velocity_distributions.png"))
         print("Velocity distributions plot saved successfully")
  
@@ -170,7 +173,7 @@ def main(config_path):
         dpi = plot_settings['generate_video'].get("video_dpi", 100)
         
         create_video(sol, length, G, t_f, dt, n_part, 
-                    save_path=video_path, fps=fps, dpi=dpi, density_scaling=density_scaling, 
+                    save_path=video_path, fps=fps, dpi=dpi, density_scaling=density_scaling, solver=solver,
                     softening=softening, m_part=m_part,
                     enable_energy_tracking=enable_energy_tracking,
                     energy_data=energy_data)
@@ -186,7 +189,7 @@ def main(config_path):
 
     # --- SAMPLING ---
     from likelihood import get_log_posterior
-    from sampling import run_hmc, run_nuts, extract_params_to_infer
+    from sampling import extract_params_to_infer
     from utils import extract_true_values_from_blobs
 
     print('Starting sampling process...')
@@ -209,6 +212,7 @@ def main(config_path):
         "dt": dt,
         "m_part": m_part,
         "density_scaling": density_scaling,
+        "solver": solver,
         **scaling_kwargs
     }
     
@@ -244,6 +248,7 @@ def main(config_path):
 
     # Run the sampler
     if config["sampler"] == "hmc":
+        from sampling import run_hmc
         print("Running HMC sampler...")
         inv_mass_matrix = np.array(config["inv_mass_matrix"])
         step_size = config.get("step_size", 1e-3)
@@ -261,6 +266,7 @@ def main(config_path):
 
     elif config["sampler"] == "nuts":
         print("Running NUTS sampler...")
+        from sampling import run_nuts
         num_warmup = config.get("num_warmup", 1000)
         samples = run_nuts(
             log_posterior,
@@ -271,8 +277,39 @@ def main(config_path):
             progress_bar=progress_bar  
         )
     
+    elif config["sampler"] == "rwm":
+        print("Running Random Walk Metropolis sampler...")
+        from sampling import run_rwm
+        step_size = config.get("step_size", 0.1)
+        num_warmup = config.get("num_warmup", 0)  # Add this line
+        samples = run_rwm(
+            log_posterior,
+            initial_position,
+            step_size,
+            rng_key,
+            num_samples,
+            num_warmup=num_warmup,  # Add this parameter
+            progress_bar=progress_bar
+        )
+    
+    elif config["sampler"] == "mala":
+        print("Running MALA sampler...")
+        from sampling import run_mala
+        step_size = config.get("step_size", 0.01)
+        num_warmup = config.get("num_warmup", 0)  # Add this line
+        samples = run_mala(
+            log_posterior,
+            initial_position,
+            step_size,
+            rng_key,
+            num_samples,
+            num_warmup=num_warmup,  # Add this parameter
+            progress_bar=progress_bar
+        )
+    
     else:
-        raise ValueError("Unknown sampler: should be 'hmc' or 'nuts'")
+        raise ValueError("Unknown sampler: should be 'hmc', 'nuts', 'rwm', or 'mala'")
+    
     print("Sampling finished.")
     
     samples_dict = {}
