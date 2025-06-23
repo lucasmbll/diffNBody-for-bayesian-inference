@@ -395,6 +395,7 @@ def plot_trajectories(solution, G, tf, dt, length, n_part, solver, num_trajector
     y_min, y_max = float('inf'), float('-inf')
     z_min, z_max = float('inf'), float('-inf')
     
+    smoothing = False
     if num_steps < 4 * length:
         from utils import smooth_trajectory
         smoothing = True

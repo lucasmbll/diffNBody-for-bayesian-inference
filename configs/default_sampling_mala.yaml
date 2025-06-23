@@ -3,7 +3,7 @@
 # Use with : python src/run_experiments.py --config configs/default_sampling_mala.yaml
 
 # --- HARDWARE/CLUSTER SETTINGS ---
-cuda_visible_devices: 2  # GPU index to use
+cuda_visible_devices: 6  # GPU index to use
 
 # --- EXPERIMENT MODE and MISCELLANEOUS ---
 mode: sampling      # Experiment mode (options: "sim", "sampling")
@@ -51,11 +51,11 @@ model_params:
     - n_part: 2000
       pos_type: gaussian
       pos_params:
-        sigma: 10.0  # TRUE VALUE to be inferred
-        center: [32.0, 32.0, 32.0]  # TRUE VALUE to be inferred
+        sigma: 10.0  
+        center: [32.0, 32.0, 32.0] 
       vel_type: circular
       vel_params:
-        vel_factor: 0.5  # TRUE VALUE to be inferred
+        vel_factor: 0.2  
         distrib: False
 
 # --- LIKELIHOOD SETTINGS ---
@@ -74,14 +74,15 @@ prior_params:
 
 # --- SAMPLER SETTINGS ---
 sampler: mala           # Metropolis-Adjusted Langevin Algorithm
-num_samples: 2000       # Number of MCMC samples to draw
+num_samples: 50000       # Number of MCMC samples to draw
 sampling_seed: 12345    # Random seed for reproducibility
+autotuning: false  # Disable autotuning for step size
 num_warmup: 1000
 progress_bar: false      # Show progress bar during sampling
 
 # MALA-specific parameters:
 # Option 1: Single step size for all parameters (current setting)
-step_size: 0.01         # Step size for MALA (smaller than HMC typically)
+step_size: 0.0007         # Step size for MALA (smaller than HMC typically)
 
 # Option 2: Parameter-specific step sizes
 # step_size:
@@ -98,6 +99,6 @@ step_size: 0.01         # Step size for MALA (smaller than HMC typically)
 
 # Initial position for the sampler - start with values different from the true ones
 initial_position: 
-  blob0_sigma: 10.0          # Starting guess for sigma
-  blob0_center: [32.0, 32.0, 32.0]  # Starting guess for center
+  blob0_sigma: 8.0          # Starting guess for sigma
+  blob0_center: [30.0, 29.0, 39.0]  # Starting guess for center
   #blob0_vel_factor: 0.3     # Starting guess for velocity factor

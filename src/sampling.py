@@ -62,7 +62,7 @@ def extract_params_to_infer(init_params):
     
     return params_to_infer
 
-def run_hmc(log_posterior, initial_position, inv_mass_matrix, step_size, num_integration_steps, rng_key, num_samples, progress_bar=False):
+def run_hmc(log_posterior, initial_position, inv_mass_matrix, step_size, num_integration_steps, rng_key, num_samples, num_warmup=1000, progress_bar=False):
     print(f"HMC parameters: step_size={step_size}, num_integration_steps={num_integration_steps}")
     print(f"Initial position: {initial_position}")
     print("\n" + "STARTING SAMPLING PHASE")
@@ -71,7 +71,12 @@ def run_hmc(log_posterior, initial_position, inv_mass_matrix, step_size, num_int
     hmc = blackjax.hmc(log_posterior, step_size, inv_mass_matrix, num_integration_steps)
     hmc_kernel = jax.jit(hmc.step)
     initial_state = hmc.init(initial_position)
-    states = inference_loop(rng_key, hmc_kernel, initial_state, num_samples, progress_bar=progress_bar)
+    
+    if num_warmup > 0:
+        states = inference_loop(rng_key, hmc_kernel, initial_state, num_samples+num_warmup, progress_bar=progress_bar)
+    
+    else :
+        states = inference_loop(rng_key, hmc_kernel, initial_state, num_samples, progress_bar=progress_bar)
 
     sampling_end_time = time.time()
     sampling_duration = sampling_end_time - sampling_start_time
@@ -126,8 +131,7 @@ def run_nuts(log_posterior, initial_position, rng_key, num_samples, num_warmup=1
     return states.position
 
 
-def run_rwm(log_posterior, initial_position, step_size, rng_key, num_samples, 
-            num_warmup=0, progress_bar=False):
+def run_rwm(log_posterior, initial_position, step_size, rng_key, num_samples, progress_bar=False):
     """
     Run Random Walk Metropolis sampler with optional warmup phase.
     
@@ -143,8 +147,6 @@ def run_rwm(log_posterior, initial_position, step_size, rng_key, num_samples,
         Random key for sampling
     num_samples : int
         Number of samples to draw
-    num_warmup : int, optional
-        Number of warmup steps for step size adaptation (default: 0, no warmup)
     progress_bar : bool
         Whether to show progress bar
         
@@ -155,28 +157,7 @@ def run_rwm(log_posterior, initial_position, step_size, rng_key, num_samples,
     """
     print(f"RWM parameters: step_size={step_size}")
     print(f"Initial position: {initial_position}")
-    print(f"Warmup steps: {num_warmup}")
     print(f"Sampling steps: {num_samples}")
-    
-    if num_warmup > 0:
-        # Use Blackjax's adaptive warmup
-        print("\n" + "STARTING WARMUP PHASE")
-        from utils import tune_step_size
-
-        warmup_start_time = time.time()
-        
-        step_size_adapted = tune_step_size(blackjax.rmh, log_posterior, initial_position, rng_key, num_trials=num_warmup)
-        
-        warmup_end_time = time.time()
-        warmup_duration = warmup_end_time - warmup_start_time
-        
-        print("WARMUP PHASE COMPLETED")
-        print(f"Warmup duration: {warmup_duration:.2f} seconds")
-        print(f"Original step size: {step_size}")
-        print(f"Adapted step size: {step_size_adapted}")
-        
-        # Use adapted parameters for sampling
-        step_size = step_size_adapted
         
     print("\n" + "STARTING SAMPLING PHASE")
     sampling_start_time = time.time()
@@ -184,7 +165,7 @@ def run_rwm(log_posterior, initial_position, step_size, rng_key, num_samples,
     sample_key = rng_key
     
     # Initialize RWM with provided step size
-    rwm = blackjax.rmh(log_posterior, step_size)
+    rwm = blackjax.additive_step_random_walk(log_posterior, blackjax.mcmc.random_walk.normal(step_size))
     rwm_kernel = jax.jit(rwm.step)
     initial_state = rwm.init(initial_position)
     
@@ -199,14 +180,10 @@ def run_rwm(log_posterior, initial_position, step_size, rng_key, num_samples,
     print(f"Average time per sample: {sampling_duration/num_samples:.4f} seconds")
     print(f"Samples per second: {num_samples/sampling_duration:.2f}")
     
-    if num_warmup > 0:
-        total_duration = warmup_duration + sampling_duration
-        print(f"Total duration (warmup + sampling): {total_duration:.2f} seconds")
-    
     return states.position
 
 def run_mala(log_posterior, initial_position, step_size, rng_key, num_samples, 
-             num_warmup=0, progress_bar=False):
+             num_warmup=1000, progress_bar=False, autotuning=False):
     """
     Run MALA sampler with optional warmup phase.
     
@@ -226,6 +203,8 @@ def run_mala(log_posterior, initial_position, step_size, rng_key, num_samples,
         Number of warmup steps for step size adaptation (default: 0, no warmup)
     progress_bar : bool
         Whether to show progress bar
+    autotuning : bool, optional
+        Whether to adapt step size during warmup (default: False)
         
     Returns:
     --------
@@ -237,26 +216,24 @@ def run_mala(log_posterior, initial_position, step_size, rng_key, num_samples,
     print(f"Warmup steps: {num_warmup}")
     print(f"Sampling steps: {num_samples}")
     
-    if num_warmup > 0:
+    if autotuning:
         from utils import tune_step_size
-        print("\n" + "STARTING WARMUP PHASE")
-        warmup_start_time = time.time()
+        print("\n" + "STARTING AUTOTUNING PHASE")
+        autotuning_start_time = time.time()
         
-        step_size_adapted = tune_step_size(blackjax.mala, log_posterior, initial_position, rng_key, num_trials=num_warmup)
+        step_size_adapted = tune_step_size(blackjax.mala, log_posterior, initial_position, rng_key, num_trials=100)
 
-        warmup_end_time = time.time()
-        warmup_duration = warmup_end_time - warmup_start_time
+        autotuning_end_time = time.time()
+
+        autotuning_duration = autotuning_end_time - autotuning_start_time
         
-        print("WARMUP PHASE COMPLETED")
-        print(f"Warmup duration: {warmup_duration:.2f} seconds")
+        print("AUTOTUNING PHASE COMPLETED")
+        print(f"Autotuning duration: {autotuning_duration:.2f} seconds")
         print(f"Original step size: {step_size}")
         print(f"Adapted step size: {step_size_adapted}")
         
         # Use adapted parameters for sampling
         step_size = step_size_adapted
-        
-    print("\n" + "STARTING SAMPLING PHASE")
-    sampling_start_time = time.time()
     
     sample_key = rng_key    
     # Initialize MALA with provided step size
@@ -264,19 +241,19 @@ def run_mala(log_posterior, initial_position, step_size, rng_key, num_samples,
     mala_kernel = jax.jit(mala.step)
     initial_state = mala.init(initial_position)
     
-    # Run sampling
-    states = inference_loop(sample_key, mala_kernel, initial_state, num_samples, progress_bar=progress_bar)
-    
-    sampling_end_time = time.time()
-    sampling_duration = sampling_end_time - sampling_start_time
-    
-    print("SAMPLING PHASE COMPLETED")
-    print(f"Sampling duration: {sampling_duration:.2f} seconds")
-    print(f"Average time per sample: {sampling_duration/num_samples:.4f} seconds")
-    print(f"Samples per second: {num_samples/sampling_duration:.2f}")
-    
+    print("\n" + "STARTING SAMPLING PHASE")
+    start_time = time.time()
+
+
     if num_warmup > 0:
-        total_duration = warmup_duration + sampling_duration
-        print(f"Total duration (warmup + sampling): {total_duration:.2f} seconds")
+
+        states = inference_loop(sample_key, mala_kernel, initial_state, num_warmup + num_samples, progress_bar=progress_bar)      
     
+    else :
+        states = inference_loop(sample_key, mala_kernel, initial_state, num_samples, progress_bar=progress_bar)
+
+    end_time = time.time()
+    duration = end_time - start_time
+    print("SAMPLING PHASE COMPLETED")
+    print(f"Sampling duration: {duration:.2f} seconds")
     return states.position

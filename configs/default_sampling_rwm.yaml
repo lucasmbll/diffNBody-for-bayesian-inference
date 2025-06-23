@@ -3,7 +3,7 @@
 # Use with : python src/run_experiments.py --config configs/default_sampling_rwm.yaml
 
 # --- HARDWARE/CLUSTER SETTINGS ---
-cuda_visible_devices: 1  # GPU index to use
+cuda_visible_devices: 7  # GPU index to use
 
 # --- EXPERIMENT MODE and MISCELLANEOUS ---
 mode: sampling      # Experiment mode (options: "sim", "sampling")
@@ -55,7 +55,7 @@ model_params:
         center: [32.0, 32.0, 32.0]  # TRUE VALUE to be inferred
       vel_type: circular
       vel_params:
-        vel_factor: 0.5  # TRUE VALUE to be inferred
+        vel_factor: 0.2  # TRUE VALUE to be inferred
         distrib: False
 
 # --- LIKELIHOOD SETTINGS ---
@@ -74,8 +74,7 @@ prior_params:
 
 # --- SAMPLER SETTINGS ---
 sampler: rwm            # Random Walk Metropolis sampler
-num_samples: 2000       # Number of MCMC samples to draw``
-num_warmup: 1000
+num_samples: 50000       # Number of MCMC samples to draw``
 sampling_seed: 12345    # Random seed for reproducibility
 progress_bar: false      # Show progress bar during sampling
 
@@ -95,6 +94,6 @@ step_size: 0.1          # Single step size applied to all parameters
 
 # Initial position for the sampler - start with values different from the true ones
 initial_position: 
-  blob0_sigma: 10.0          # Starting guess for sigma
-  blob0_center: [32.0, 32.0, 32.0]  # Starting guess for center
+  blob0_sigma: 8.0          # Starting guess for sigma
+  blob0_center: [28.0, 39.0, 30.0]  # Starting guess for center
   #blob0_vel_factor: 0.3     # Starting guess for velocity factor

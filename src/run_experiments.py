@@ -253,6 +253,7 @@ def main(config_path):
         inv_mass_matrix = np.array(config["inv_mass_matrix"])
         step_size = config.get("step_size", 1e-3)
         num_integration_steps = config.get("num_integration_steps", 50)
+        num_warmup = config.get("num_warmup", 1000)
         samples = run_hmc(
             log_posterior,
             initial_position,
@@ -261,7 +262,8 @@ def main(config_path):
             num_integration_steps,
             rng_key,
             num_samples,
-            progress_bar=progress_bar
+            num_warmup,  
+            progress_bar
         )
 
     elif config["sampler"] == "nuts":
@@ -281,14 +283,12 @@ def main(config_path):
         print("Running Random Walk Metropolis sampler...")
         from sampling import run_rwm
         step_size = config.get("step_size", 0.1)
-        num_warmup = config.get("num_warmup", 0)  # Add this line
         samples = run_rwm(
             log_posterior,
             initial_position,
             step_size,
             rng_key,
             num_samples,
-            num_warmup=num_warmup,  # Add this parameter
             progress_bar=progress_bar
         )
     
@@ -296,14 +296,16 @@ def main(config_path):
         print("Running MALA sampler...")
         from sampling import run_mala
         step_size = config.get("step_size", 0.01)
-        num_warmup = config.get("num_warmup", 0)  # Add this line
+        num_warmup = config.get("num_warmup", 0)  
+        autotuning = config.get("autotuning", False)
         samples = run_mala(
             log_posterior,
             initial_position,
             step_size,
             rng_key,
             num_samples,
-            num_warmup=num_warmup,  # Add this parameter
+            num_warmup=num_warmup,  
+            autotuning=autotuning,
             progress_bar=progress_bar
         )
     
@@ -367,13 +369,14 @@ def main(config_path):
     fig.savefig(os.path.join(base_dir, "trace_sampling.png"))
     print("Trace plot saved.")
 
+    burnin = num_warmup if config["sampler"] in ["nuts", "hmc", "mala"] else 0
     fig = plot_corner_after_burnin(
         samples_dict,
         theta=theta,
         G=G, t_f=t_f, dt=dt, softening=softening, length=length, n_part=n_part,
         method=config["sampler"],
         param_order=param_order,
-        burnin=num_warmup if config["sampler"] == "nuts" else 0
+        burnin=burnin
     )
     existing_suptitle = fig._suptitle.get_text() if fig._suptitle else "Corner Plot"
     new_suptitle = existing_suptitle + "\n" + "\n".join(lines)
