@@ -7,14 +7,8 @@ A JAX-based framework for N-body simulations and Bayesian parameter inference us
 - [Features](#features)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
-- [Usage Modes](#usage-modes)
-- [Configuration Files](#configuration-files)
   - [Simulation Mode](#simulation-mode)
   - [Sampling Mode](#sampling-mode)
-- [Parameter Reference](#parameter-reference)
-- [Examples](#examples)
-- [Output Structure](#output-structure)
-- [Troubleshooting](#troubleshooting)
 
 ## Features
 
@@ -60,8 +54,8 @@ conda activate diffnbody
 
 ```bash
 pip install jax jaxlib diffrax blackjax matplotlib numpy
-# For GPU: see [JAX installation guide](https://jax.readthedocs.io/en/latest/installation.html)
 ```
+For GPU: see [JAX installation guide](https://jax.readthedocs.io/en/latest/installation.html)
 
 ### Step 4: Install Optional Tools
 
@@ -295,8 +289,8 @@ blobs_params:
 prior_params:
   blob0_sigma: {mu: 12.0, sigma: 3.0}
   blob0_center: {mu: [30.0, 30.0, 30.0], sigma: 5.0}
-  #Only parameters with provided prior will be sampled
 ```
+Only parameters with provided prior will be sampled.
 **Expected Outputs:**
 ```
 default_sampling_nuts_YYYYMMDD_HHMMSS/
