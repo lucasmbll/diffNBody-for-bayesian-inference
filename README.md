@@ -7,8 +7,6 @@ A JAX-based framework for N-body simulations and Bayesian parameter inference us
 - [Features](#features)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
-  - [Simulation Mode](#simulation-mode)
-  - [Sampling Mode](#sampling-mode)
 
 ## Features
 
