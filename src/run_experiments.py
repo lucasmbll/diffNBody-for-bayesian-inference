@@ -159,10 +159,12 @@ def main(config_path):
         print("Trajectories plot saved successfully")
     
     if plot_settings['velocity_plot'].get("do"):
-        from plotting import plot_velocity_distributions
+        from plotting import plot_velocity_distributions, plot_velocity_vs_radius_blobs
         print("Creating velocity distributions plot...")
         fig, _ = plot_velocity_distributions(sol, G, t_f, dt, length, n_part, solver)
         fig.savefig(os.path.join(base_dir, "velocity_distributions.png"))
+        fig2 = plot_velocity_vs_radius_blobs(sol, blobs_params, G, t_f, dt, length, n_part, softening, solver)
+        fig2.savefig(os.path.join(base_dir, "velocity_wrt_radius.png"))
         print("Velocity distributions plot saved successfully")
  
     if plot_settings['generate_video'].get("do"):

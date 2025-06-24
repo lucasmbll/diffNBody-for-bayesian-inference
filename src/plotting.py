@@ -396,7 +396,7 @@ def plot_trajectories(solution, G, tf, dt, length, n_part, solver, num_trajector
     z_min, z_max = float('inf'), float('-inf')
     
     smoothing = False
-    if num_steps < 4 * length:
+    if num_steps < 2 * length:
         from utils import smooth_trajectory
         smoothing = True
         ax_3d_title += f' (smoothed, window={smooth_window})'
@@ -669,6 +669,100 @@ def plot_velocity_distributions(sol, G, tf, dt, length, n_part, solver, save_pat
     plt.show()
     
     return fig, axes
+
+def plot_velocity_vs_radius_blobs(sol, blobs_params, G, tf, dt, length, n_part, softening, solver, save_path=None, time_idx=0):
+    """
+    Plot velocity magnitude vs distance to blob center for all blobs in the simulation.
+    """
+
+    positions = sol.ys[time_idx, 0]  # Positions at specified time
+    velocities = sol.ys[time_idx, 1]  # Velocities at specified time
+    time = sol.ts[time_idx]
+    
+    vel_magnitudes = jnp.sqrt(jnp.sum(velocities**2, axis=1))
+    
+    fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+    
+    particle_idx = 0
+    colors = plt.cm.tab10(np.linspace(0, 1, len(blobs_params)))
+    
+    for blob_idx, blob in enumerate(blobs_params):
+        n_blob_particles = blob['n_part']
+        blob_center = jnp.array(blob['pos_params']['center'])
+        
+        blob_positions = positions[particle_idx:particle_idx + n_blob_particles]
+        blob_velocities = vel_magnitudes[particle_idx:particle_idx + n_blob_particles]
+        
+        dx = blob_positions - blob_center
+        dx = dx - length * jnp.round(dx / length)
+        distances = jnp.sqrt(jnp.sum(dx**2, axis=1))
+        
+        pos_type = blob['pos_type']
+        vel_type = blob['vel_type']
+        
+        # Extract velocity factor for label and theoretical curve
+        vel_factor = 1.0  # Default value
+        if vel_type == 'circular' and 'vel_factor' in blob['vel_params']:
+            vel_factor = blob['vel_params']['vel_factor']
+        
+        # Create blob label with velocity factor information
+        if pos_type == 'gaussian':
+            sigma = blob['pos_params']['sigma']
+            if vel_type == 'circular':
+                blob_label = f"Blob {blob_idx}: Gaussian (σ={sigma:.1f}), {vel_type} (factor={vel_factor:.1f})"
+            else:
+                blob_label = f"Blob {blob_idx}: Gaussian (σ={sigma:.1f}), {vel_type}"
+        elif pos_type == 'nfw':
+            rs = blob['pos_params']['rs']
+            c = blob['pos_params']['c']
+            if vel_type == 'circular':
+                blob_label = f"Blob {blob_idx}: NFW (rs={rs:.1f}, c={c:.1f}), {vel_type} (factor={vel_factor:.1f})"
+            else:
+                blob_label = f"Blob {blob_idx}: NFW (rs={rs:.1f}, c={c:.1f}), {vel_type}"
+        else:
+            if vel_type == 'circular':
+                blob_label = f"Blob {blob_idx}: {pos_type}, {vel_type} (factor={vel_factor:.1f})"
+            else:
+                blob_label = f"Blob {blob_idx}: {pos_type}, {vel_type}"
+        
+        ax.scatter(distances, blob_velocities, 
+                   color=colors[blob_idx], alpha=0.6, s=20, 
+                   label=blob_label)
+        
+        # Theoretical circular velocity curve
+        if vel_type == 'circular':
+            r_theory = jnp.linspace(0.1, jnp.max(distances) * 1.2, 100)
+
+            if pos_type == 'gaussian':
+                from utils import blob_enclosed_mass_gaussian
+                sigma = blob['pos_params']['sigma']
+                M_blob = n_blob_particles
+                M_enclosed = blob_enclosed_mass_gaussian(r_theory, M_blob, sigma)
+            elif pos_type == 'nfw':
+                from utils import blob_enclosed_mass_nfw
+                rs = blob['pos_params']['rs']
+                c = blob['pos_params']['c']
+                M_blob = n_blob_particles
+                M_enclosed = blob_enclosed_mass_nfw(r_theory, M_blob, rs, c)
+            else:
+                M_enclosed = jnp.zeros_like(r_theory)
+
+            v_theory = jnp.sqrt(G * M_enclosed / jnp.sqrt(r_theory**2 + softening**2)) * vel_factor
+
+            ax.plot(r_theory, v_theory, color=colors[blob_idx], linewidth=2, linestyle='--')
+
+        particle_idx += n_blob_particles
+
+    ax.set_xlabel("Distance to blob center")
+    ax.set_ylabel("Velocity magnitude")
+    ax.set_title(f"Velocity vs Radius at t = {time:.2f} ({solver}, dt={dt}, G={G})")
+    ax.grid(True)
+    ax.legend()
+    
+    if save_path:
+        fig.savefig(save_path, dpi=300)
+    
+    return fig
 
 def create_video(
     sol, length, G, t_f, dt, n_part, density_scaling, solver, softening=0.1, m_part=1.0, 
@@ -1044,3 +1138,6 @@ def plot_corner_after_burnin(mcmc_samples, theta, G, t_f, dt, softening, length,
         fig.savefig(save_path)
     
     return fig
+
+
+

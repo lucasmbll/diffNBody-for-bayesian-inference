@@ -181,7 +181,7 @@ def initialize_virial_velocities(positions, vel_params, G, m_part):
     
     return velocities
 
-def initialize_circular_velocities_proxy(positions, vel_params, G, m_part):
+def initialize_circular_velocities_proxy(positions, vel_params, G, m_part, softening):
     """
     Initialize velocities to circular orbits around the center of mass with a proxy method.
     
@@ -225,11 +225,7 @@ def initialize_circular_velocities_proxy(positions, vel_params, G, m_part):
     M_enclosed = M * r_safe / jnp.max(r_safe)
     
     # Calculate circular velocity magnitude
-    v_circ = jnp.sqrt(G * M_enclosed / r_safe) * vel_factor
-    
-    # SAFETY MEASURE 2: Cap maximum velocity
-    v_max = 10.0  # Maximum allowed velocity
-    v_circ = jnp.minimum(v_circ, v_max)
+    v_circ = jnp.sqrt(G * M_enclosed / jnp.sqrt(r_safe**2 + softening**2)) * vel_factor
     
     # Compute direction perpendicular to radius vector in the x-y plane
     z_axis = jnp.array([0.0, 0.0, 1.0])
@@ -257,7 +253,7 @@ def initialize_circular_velocities_proxy(positions, vel_params, G, m_part):
     
     return velocities
 
-def initialize_circular_velocities_gaussian(positions, vel_params, G, m_part, pos_params):
+def initialize_circular_velocities_gaussian(positions, vel_params, G, m_part, pos_params, softening):
     """
     Initialize velocities to circular orbits for a Gaussian blob.
     
@@ -308,11 +304,8 @@ def initialize_circular_velocities_gaussian(positions, vel_params, G, m_part, po
     M_enclosed = jnp.maximum(M_enclosed, 0.01 * M)
     
     # Calculate circular velocity magnitude
-    v_circ = jnp.sqrt(G * M_enclosed / r_safe) * vel_factor
-    
-    # SAFETY MEASURE 2: Cap maximum velocity
-    v_max = 10.0
-    v_circ = jnp.minimum(v_circ, v_max)
+    v_circ = jnp.sqrt(G * M_enclosed / jnp.sqrt(r_safe**2 + softening**2)) * vel_factor
+
     
     # Compute direction perpendicular to radius vector in the x-y plane
     z_axis = jnp.array([0.0, 0.0, 1.0])
@@ -329,8 +322,7 @@ def initialize_circular_velocities_gaussian(positions, vel_params, G, m_part, po
     # SAFETY MEASURE 4: Zero velocity for particles too close to center or with problematic geometry
     is_too_close = r < r_min
     has_tiny_perp = jnp.linalg.norm(perp, axis=1) < 1e-6
-    has_extreme_velocity = v_circ > v_max * 0.99
-    is_problematic = is_too_close | has_tiny_perp | has_extreme_velocity
+    is_problematic = is_too_close | has_tiny_perp
     
     # Apply safety condition: zero velocity for problematic particles
     velocities = jnp.where(
@@ -343,7 +335,7 @@ def initialize_circular_velocities_gaussian(positions, vel_params, G, m_part, po
 
     
 
-def initialize_circular_velocities_nfw(positions, vel_params, G, m_part, pos_params):
+def initialize_circular_velocities_nfw(positions, vel_params, G, m_part, pos_params, softening):
     """
     Initialize velocities to circular orbits for an NFW halo (analytic mass).
 
@@ -384,14 +376,8 @@ def initialize_circular_velocities_nfw(positions, vel_params, G, m_part, pos_par
     from utils import blob_enclosed_mass_nfw
     M_enclosed = blob_enclosed_mass_nfw(r_safe, M, rs, c)
     
-    # SAFETY MEASURE: Ensure minimum enclosed mass
-    M_enclosed = jnp.maximum(M_enclosed, 0.01 * M)
+    v_circ = jnp.sqrt(G * M_enclosed / jnp.sqrt(r_safe**2 + softening**2)) * vel_factor
     
-    v_circ = jnp.sqrt(G * M_enclosed / r_safe) * vel_factor
-    
-    # SAFETY MEASURE 2: Cap maximum velocity
-    v_max = 10.0
-    v_circ = jnp.minimum(v_circ, v_max)
 
     z_axis = jnp.array([0.0, 0.0, 1.0])
     perp = jnp.cross(rel_pos, z_axis)
@@ -407,8 +393,7 @@ def initialize_circular_velocities_nfw(positions, vel_params, G, m_part, pos_par
     is_too_close = r < r_min
     is_too_far = r > r_max
     has_tiny_perp = jnp.linalg.norm(perp, axis=1) < 1e-6
-    has_extreme_velocity = v_circ > v_max * 0.99
-    is_problematic = is_too_close | is_too_far | has_tiny_perp | has_extreme_velocity
+    is_problematic = is_too_close | is_too_far | has_tiny_perp
     
     # Apply safety condition: zero velocity for problematic particles
     velocities = jnp.where(
@@ -421,7 +406,7 @@ def initialize_circular_velocities_nfw(positions, vel_params, G, m_part, pos_par
 
 # --- Combined initialization function ---
 
-def initialize_blob(blob_params, length, G, m_part, key):
+def initialize_blob(blob_params, length, G, m_part, softening, key):
     """
     Initialize a single blob with given parameters.
     
@@ -476,18 +461,18 @@ def initialize_blob(blob_params, length, G, m_part, key):
         # For circular velocities, we use the specific function for the position distribution
         if distrib:
             if pos_type == 'gaussian':
-                velocities = initialize_circular_velocities_gaussian(positions, vel_params, G, m_part, pos_params)
+                velocities = initialize_circular_velocities_gaussian(positions, vel_params, G, m_part, pos_params, softening)
             
             elif pos_type == 'nfw':
-                velocities = initialize_circular_velocities_nfw(positions, vel_params, G, m_part, pos_params)
+                velocities = initialize_circular_velocities_nfw(positions, vel_params, G, m_part, pos_params, softening)
         else:
-            velocities = initialize_circular_velocities_proxy(positions, vel_params, G, m_part)
+            velocities = initialize_circular_velocities_proxy(positions, vel_params, G, m_part, softening)
     else:
         raise ValueError(f"Unknown velocity type: {vel_type}")
     
     return positions, velocities
 
-def initialize_blobs(blobs_params, length, G, m_part, key=None):
+def initialize_blobs(blobs_params, length, G, m_part, softening, key=None):
     """
     Initialize multiple blobs with given parameters.
     
@@ -521,7 +506,7 @@ def initialize_blobs(blobs_params, length, G, m_part, key=None):
     all_positions = []
     all_velocities = []
     for i, blob_params in enumerate(blobs_params):
-        pos, vel = initialize_blob(blob_params, length, G, m_part, keys[i])
+        pos, vel = initialize_blob(blob_params, length, G, m_part, softening, keys[i])
         all_positions.append(pos)
         all_velocities.append(vel)
     

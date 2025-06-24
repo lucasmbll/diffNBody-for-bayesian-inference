@@ -14,7 +14,7 @@ def pairwise_forces(pos, G, softening, length, m_part):
     r2 = jnp.sum(dx**2, axis=-1) + softening**2 # (N,N)
     inv_r3 = jnp.where(jnp.eye(pos.shape[0]), 0., r2**-1.5)
     F = jnp.einsum('ij,ijc->ic', inv_r3, dx)  # (N,3)
-    F = -G * F * m_part
+    F = -G * F * m_part**2
     return F
 
 def make_diffrax_ode(softening, G, length, m_part):
@@ -87,7 +87,7 @@ def model(
     if key is None:
         key = jax.random.PRNGKey(0)
     
-    init_pos, init_vel = initialize_blobs(blobs_params, length, G, m_part, key)
+    init_pos, init_vel = initialize_blobs(blobs_params, length, G, m_part, softening, key)
     
     # Create raw density fields
     raw_input_field = cic_paint(jnp.zeros(grid_shape), init_pos)

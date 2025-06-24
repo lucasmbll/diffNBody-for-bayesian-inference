@@ -56,7 +56,7 @@ model_params:
       vel_type: circular
       vel_params:
         vel_factor: 0.5  
-        distrib: False
+        distrib: True
 
 # --- LIKELIHOOD SETTINGS ---
 likelihood_type: ll1   # Options: "ll1", "ll2"
