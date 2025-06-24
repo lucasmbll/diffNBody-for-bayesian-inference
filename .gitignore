@@ -1,10 +1,5 @@
 results/
 test/
-UPLOAD_INSTRUCTIONS.txt
-notebooks/test.ipynb
-notebooks/nbody_PP.ipynb
-notebooks/report.ipynb
-notebooks/sampling.ipynb
 src/__pycache__/
 configs/old_configs/
 configs/sampling/
@@ -13,8 +8,3 @@ configs/multiple_1
 configs/test
 old_code/
 
-UPLOAD_INSTRUCTIONS.txt
-src/plotting_after_saved.py
-UPLOAD_INSTRUCTIONS.txt
-Capture d’écran 2025-06-17 à 13.44.55.png
-batch_summary.yaml
