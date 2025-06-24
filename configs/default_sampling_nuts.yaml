@@ -51,11 +51,11 @@ model_params:
     - n_part: 2000
       pos_type: gaussian
       pos_params:
-        sigma: 10.0  # TRUE VALUE to be inferred
-        center: [32.0, 32.0, 32.0]  # TRUE VALUE to be inferred
+        sigma: 10.0  
+        center: [32.0, 32.0, 32.0]  
       vel_type: circular
       vel_params:
-        vel_factor: 0.5  # TRUE VALUE to be inferred
+        vel_factor: 0.5  
         distrib: False
 
 # --- LIKELIHOOD SETTINGS ---

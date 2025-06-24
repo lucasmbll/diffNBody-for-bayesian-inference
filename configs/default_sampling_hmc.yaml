@@ -51,18 +51,25 @@ model_params:
     - n_part: 2000
       pos_type: gaussian
       pos_params:
-        sigma: 10.0  # TRUE VALUE to be inferred
-        center: [32.0, 32.0, 32.0]  # TRUE VALUE to be inferred
+        sigma: 10.0  
+        center: [32.0, 32.0, 32.0] 
       vel_type: circular
       vel_params:
-        vel_factor: 0.5  # TRUE VALUE to be inferred
+        vel_factor: 0.5  
         distrib: False
 
 # --- LIKELIHOOD SETTINGS ---
 likelihood_type: ll1   # Options: "ll1", "ll2"
 likelihood_kwargs: 
   noise: 1  # Standard deviation of instrumental noise
+  # For ll2 only:
+  # n_realizations: 10    # Number of model realizations to average over
+  # parallel_ll2: false   # Whether to parallelize ll2 evaluations using pmap
 
+# Parallel likelihood options (only for ll2):
+# parallel_ll2: true      # Use pmap to parallelize likelihood evaluations
+                          # Note: Only effective with likelihood_type: ll2
+                          # Automatically splits n_realizations across available devices
 
 # --- PRIOR SETTINGS ---
 prior_type: blob_gaussian  # Use blob-specific prior
@@ -75,9 +82,12 @@ prior_params:
 # --- SAMPLER SETTINGS ---
 sampler: hmc            # Hamiltonian Monte Carlo sampler
 num_samples: 2000       # Number of MCMC samples to draw
-num_warmup: 1000        # Number of warmup (burn-in) samples
 sampling_seed: 12345    # Random seed for reproducibility
 progress_bar: false      # Show progress bar during sampling
+
+# Parallel sampling options:
+n_chains: 1             # Number of parallel chains (1 = single chain, >1 = parallel chains)
+                        # Note: Requires n_chains <= number of available GPUs/devices for optimal performance
 
 # HMC-specific parameters:
 step_size: 0.02         # Step size for leapfrog integrator
@@ -93,13 +103,11 @@ inv_mass_matrix: [1, 0.04, 100.0]  # Will be automatically adjusted based on par
 # Option 3: Full mass matrix (if correlation between parameters is known)
 # inv_mass_matrix: [[1.0, 0.1], [0.1, 0.04]]  # 2x2 example for correlated parameters
 
-
 # HMC tuning guidelines:
 # - step_size * num_integration_steps should be roughly O(1)
 # - Larger step_size allows faster exploration but may reduce acceptance rate
 # - More integration steps improve proposal quality but increase computational cost
 # - Mass matrix should reflect parameter scales (smaller values for larger-scale parameters)
-
 
 # Initial position for the sampler - start with values different from the true ones
 initial_position: 
