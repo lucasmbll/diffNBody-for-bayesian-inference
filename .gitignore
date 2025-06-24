@@ -1,7 +1,10 @@
 results/
 test/
 UPLOAD_INSTRUCTIONS.txt
-notebooks/
+notebooks/test.ipynb
+notebooks/nbody_PP.ipynb
+notebooks/report.ipynb
+notebooks/sampling.ipynb
 src/__pycache__/
 configs/old_configs/
 configs/sampling/
