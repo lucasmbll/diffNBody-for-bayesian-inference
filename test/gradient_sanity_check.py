@@ -285,6 +285,147 @@ def evaluate_likelihood_and_gradients(parameter_sets, log_posterior_fn, config):
     
     return log_posterior_values, gradient_values, evaluation_stats
 
+def create_1d_sigma_slices(parameter_sets, log_posterior_values, likelihood_values, grad_norms, individual_grads, param_arrays, param_names, valid_mask, output_dir):
+    """Create 1D slice plots for sigma parameters, averaging over all other parameters."""
+    print("Creating 1D sigma slice plots...")
+    
+    # Find sigma parameters
+    sigma_params = [name for name in param_names if 'sigma' in name.lower()]
+    
+    if len(sigma_params) == 0:
+        print("No sigma parameters found, skipping 1D slice plots")
+        return
+    
+    # Create figure for sigma slices
+    fig, axes = plt.subplots(len(sigma_params), 3, figsize=(18, 6 * len(sigma_params)))
+    if len(sigma_params) == 1:
+        axes = axes.reshape(1, -1)
+    
+    fig.suptitle('1D Sigma Parameter Slices (Averaged over Other Parameters)', fontsize=16)
+    
+    for sigma_idx, sigma_param in enumerate(sigma_params):
+        print(f"Processing {sigma_param}...")
+        
+        # Get unique sigma values
+        sigma_values = np.unique(param_arrays[sigma_param][valid_mask])
+        
+        # Initialize arrays for averaged quantities
+        avg_likelihood = []
+        avg_posterior = []
+        avg_grad_norm = []
+        std_likelihood = []
+        std_posterior = []
+        std_grad_norm = []
+        
+        # For each unique sigma value, compute averages across all other parameter combinations
+        for sigma_val in sigma_values:
+            # Find all parameter sets with this sigma value
+            sigma_mask = valid_mask & (param_arrays[sigma_param] == sigma_val)
+            
+            if np.sum(sigma_mask) > 0:
+                # Get values for this sigma
+                like_vals = likelihood_values[sigma_mask]
+                post_vals = log_posterior_values[sigma_mask]
+                grad_vals = grad_norms[sigma_mask]
+                
+                # Remove any remaining NaN values
+                like_vals_clean = like_vals[~np.isnan(like_vals)]
+                post_vals_clean = post_vals[~np.isnan(post_vals)]
+                grad_vals_clean = grad_vals[~np.isnan(grad_vals)]
+                
+                # Compute averages and standard deviations
+                avg_likelihood.append(np.mean(like_vals_clean) if len(like_vals_clean) > 0 else np.nan)
+                avg_posterior.append(np.mean(post_vals_clean) if len(post_vals_clean) > 0 else np.nan)
+                avg_grad_norm.append(np.mean(grad_vals_clean) if len(grad_vals_clean) > 0 else np.nan)
+                
+                std_likelihood.append(np.std(like_vals_clean) if len(like_vals_clean) > 1 else 0)
+                std_posterior.append(np.std(post_vals_clean) if len(post_vals_clean) > 1 else 0)
+                std_grad_norm.append(np.std(grad_vals_clean) if len(grad_vals_clean) > 1 else 0)
+            else:
+                # No data for this sigma value
+                avg_likelihood.append(np.nan)
+                avg_posterior.append(np.nan)
+                avg_grad_norm.append(np.nan)
+                std_likelihood.append(0)
+                std_posterior.append(0)
+                std_grad_norm.append(0)
+        
+        # Convert to numpy arrays
+        avg_likelihood = np.array(avg_likelihood)
+        avg_posterior = np.array(avg_posterior)
+        avg_grad_norm = np.array(avg_grad_norm)
+        std_likelihood = np.array(std_likelihood)
+        std_posterior = np.array(std_posterior)
+        std_grad_norm = np.array(std_grad_norm)
+        
+        # Remove NaN values for plotting
+        valid_plot_mask = ~(np.isnan(avg_likelihood) | np.isnan(avg_posterior) | np.isnan(avg_grad_norm))
+        
+        if np.sum(valid_plot_mask) > 0:
+            sigma_vals_plot = sigma_values[valid_plot_mask]
+            avg_like_plot = avg_likelihood[valid_plot_mask]
+            avg_post_plot = avg_posterior[valid_plot_mask]
+            avg_grad_plot = avg_grad_norm[valid_plot_mask]
+            std_like_plot = std_likelihood[valid_plot_mask]
+            std_post_plot = std_posterior[valid_plot_mask]
+            std_grad_plot = std_grad_norm[valid_plot_mask]
+            
+            # Plot 1: Averaged Likelihood vs Sigma
+            ax = axes[sigma_idx, 0]
+            ax.errorbar(sigma_vals_plot, avg_like_plot, yerr=std_like_plot, 
+                       marker='o', linestyle='-', capsize=5, alpha=0.8, linewidth=2, markersize=6)
+            ax.set_xlabel(f'{sigma_param}')
+            ax.set_ylabel('Average Log Likelihood')
+            ax.set_title(f'Average Likelihood vs {sigma_param}')
+            ax.grid(True, alpha=0.3)
+            
+            # Add text showing number of realizations averaged
+            n_realizations = [np.sum(valid_mask & (param_arrays[sigma_param] == sv)) for sv in sigma_vals_plot]
+            ax.text(0.02, 0.98, f'Avg over {min(n_realizations)}-{max(n_realizations)} realizations', 
+                   transform=ax.transAxes, verticalalignment='top', fontsize=10, 
+                   bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+            
+            # Plot 2: Averaged Posterior vs Sigma
+            ax = axes[sigma_idx, 1]
+            ax.errorbar(sigma_vals_plot, avg_post_plot, yerr=std_post_plot, 
+                       marker='s', linestyle='-', capsize=5, alpha=0.8, linewidth=2, markersize=6, color='orange')
+            ax.set_xlabel(f'{sigma_param}')
+            ax.set_ylabel('Average Log Posterior')
+            ax.set_title(f'Average Posterior vs {sigma_param}')
+            ax.grid(True, alpha=0.3)
+            
+            # Add text showing number of realizations averaged
+            ax.text(0.02, 0.98, f'Avg over {min(n_realizations)}-{max(n_realizations)} realizations', 
+                   transform=ax.transAxes, verticalalignment='top', fontsize=10,
+                   bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+            
+            # Plot 3: Averaged Gradient Norm vs Sigma
+            ax = axes[sigma_idx, 2]
+            ax.errorbar(sigma_vals_plot, avg_grad_plot, yerr=std_grad_plot, 
+                       marker='^', linestyle='-', capsize=5, alpha=0.8, linewidth=2, markersize=6, color='red')
+            ax.set_xlabel(f'{sigma_param}')
+            ax.set_ylabel('Average Gradient Norm')
+            ax.set_title(f'Average Gradient Norm vs {sigma_param}')
+            ax.set_yscale('log')
+            ax.grid(True, alpha=0.3)
+            
+            # Add text showing number of realizations averaged
+            ax.text(0.02, 0.98, f'Avg over {min(n_realizations)}-{max(n_realizations)} realizations', 
+                   transform=ax.transAxes, verticalalignment='top', fontsize=10,
+                   bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+            
+        else:
+            # No valid data for this sigma parameter
+            for col in range(3):
+                ax = axes[sigma_idx, col]
+                ax.text(0.5, 0.5, f'No valid data for {sigma_param}', 
+                       transform=ax.transAxes, ha='center', va='center', fontsize=12)
+                ax.set_xlabel(f'{sigma_param}')
+    
+    plt.tight_layout()
+    plt.savefig(output_dir / '1d_sigma_slices.png', dpi=300, bbox_inches='tight')
+    plt.close()
+
 def create_comprehensive_analysis(parameter_sets, log_posterior_values, gradient_values, param_names, config, evaluation_stats):
     """Create comprehensive parameter analysis plots."""
     import datetime
@@ -375,6 +516,10 @@ def create_comprehensive_analysis(parameter_sets, log_posterior_values, gradient
         return
     
     print(f"Creating analysis with {np.sum(valid_mask)} valid evaluations...")
+    
+    # NEW: Create 1D sigma slice plots
+    create_1d_sigma_slices(parameter_sets, log_posterior_values, likelihood_values, grad_norms, 
+                          individual_grads, param_arrays, param_names, valid_mask, output_dir)
     
     # Get parameter medians for fixing values
     param_medians = {}
@@ -706,6 +851,30 @@ def create_comprehensive_analysis(parameter_sets, log_posterior_values, gradient
         f.write(f"Inf in likelihood: {np.sum(np.isinf(likelihood_values))}\n")
         f.write(f"Inf in posterior: {np.sum(np.isinf(log_posterior_values))}\n\n")
         
+        # Sigma parameter analysis
+        sigma_params = [name for name in param_names if 'sigma' in name.lower()]
+        if sigma_params:
+            f.write("=== SIGMA PARAMETER ANALYSIS ===\n")
+            for sigma_param in sigma_params:
+                sigma_values = np.unique(param_arrays[sigma_param][valid_mask])
+                f.write(f"{sigma_param}:\n")
+                f.write(f"  Values tested: {sigma_values}\n")
+                f.write(f"  Range: [{np.min(sigma_values):.3f}, {np.max(sigma_values):.3f}]\n")
+                
+                # Average metrics for each sigma value
+                for sigma_val in sigma_values:
+                    sigma_mask = valid_mask & (param_arrays[sigma_param] == sigma_val)
+                    n_realizations = np.sum(sigma_mask)
+                    
+                    if n_realizations > 0:
+                        avg_like = np.mean(likelihood_values[sigma_mask][~np.isnan(likelihood_values[sigma_mask])])
+                        avg_post = np.mean(log_posterior_values[sigma_mask][~np.isnan(log_posterior_values[sigma_mask])])
+                        avg_grad = np.mean(grad_norms[sigma_mask][~np.isnan(grad_norms[sigma_mask])])
+                        
+                        f.write(f"  σ={sigma_val:.2f}: {n_realizations} realizations, "
+                               f"avg_like={avg_like:.3f}, avg_post={avg_post:.3f}, avg_grad={avg_grad:.3e}\n")
+            f.write("\n")
+        
         # Parameter statistics
         if np.sum(valid_mask) > 0:
             f.write("=== PARAMETER STATISTICS ===\n")
@@ -738,13 +907,14 @@ def create_comprehensive_analysis(parameter_sets, log_posterior_values, gradient
         
         # Files generated
         f.write("\n=== FILES GENERATED ===\n")
+        f.write("- 1d_sigma_slices.png (NEW: Averaged 1D slices for sigma parameters)\n")
         f.write("- likelihood_vs_parameters.png\n")
         f.write("- posterior_vs_parameters.png\n")
         f.write("- gradient_norm_vs_parameters.png\n")
         f.write("- individual_gradients_vs_parameters.png\n")
         f.write("- nan_inf_detection.png\n")
         f.write("- parameter_sensitivity.png\n")
-        for param1, param2 in param_pairs:
+        for param1, param2 in [(param_names[i], param_names[j]) for i in range(len(param_names)) for j in range(i+1, len(param_names))]:
             f.write(f"- surfaces_{param1}_vs_{param2}.png\n")
             f.write(f"- gradient_surfaces_{param1}_vs_{param2}.png\n")
         f.write("- comprehensive_analysis_summary.txt\n")

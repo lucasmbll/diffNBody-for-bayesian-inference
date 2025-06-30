@@ -2,7 +2,7 @@
 
 # Use with: python test/gradient_sanity_check.py --config configs/gradient_sanity_check.yaml
 
-cuda_visible_devices: 5
+cuda_visible_devices: 6
 
 # --- FORWARD MODEL PARAMETERS ---
 model_params:  
@@ -48,20 +48,20 @@ model_params:
 
 # --- HYPERCUBE PARAMETERS ---
 hypercube_params:
-  n_points_per_dim: 8  # Number of points per parameter dimension (5^n_params total evaluations)
-  mini_batch_size: 75  # Size of mini-batches for gradient evaluation (fallback when full batch fails)
+  n_points_per_dim: 10   # Number of points per parameter dimension (5^n_params total evaluations)
+  mini_batch_size: 25  # Size of mini-batches for gradient evaluation (fallback when full batch fails)
   
   # Parameter bounds for the hypercube
   param_bounds:
     blob0_sigma: 
-      min: 2.0
-      max: 15.0
+      min: 1.0
+      max: 10.0
     blob0_center:
       min: 25.0  # Scalar value applied to all three coordinates
       max: 40.0
     blob1_sigma: 
-      min: 2.0
-      max: 15.0
+      min: 1.0
+      max: 10.0
     blob1_center:
       min: 25.0  # Scalar value applied to all three coordinates
       max: 40.0

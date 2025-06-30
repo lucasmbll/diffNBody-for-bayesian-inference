@@ -33,7 +33,6 @@ model_params:
   softening: 0.1      # Softening length
   t_f: 0.75            # Final time
   dt: 0.05            # Time step
-  m_part: 1.0         # Particle mass
   data_seed: 42       # Random seed for data generation
   solver: "LeapfrogMidpoint"  # Solver type: "LeapfrogMidpoint", "Dopri5", "Dopri8", "Tsit5"
   
