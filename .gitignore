@@ -1,5 +1,4 @@
 results/
-test/
 src/__pycache__/
 configs/old_configs/
 configs/sampling/
@@ -8,3 +7,11 @@ configs/multiple_1
 configs/test_configs
 old_code/
 
+test/test_outputs/
+test/notebooks
+test/UPLOAD_INSTRUCTIONS.txt
+test/run_multiple_experiments.py
+test/simple_gradient_test.py
+test/test_likelihood_vs_sigma.py
+test/test_nuts_prior.py
+test/test_plotting_sampling.py

@@ -58,7 +58,7 @@ def main(config_path):
     solver = model_params.get("solver", "LeapfrogMidpoint") 
 
 
-    # Random seed
+    # Random seed for data generation
     data_seed = model_params.get("data_seed", 0)
     data_key = jax.random.PRNGKey(data_seed)
     
@@ -72,26 +72,36 @@ def main(config_path):
         raise ValueError("Blob parameters 'blobs_params' must be specified in the configuration file.")
     
     n_part = sum(blob['n_part'] for blob in blobs_params)
+    total_mass = sum(blob['n_part'] * blob.get('m_part', 1.0) for blob in blobs_params)
 
     # Run model to generate mock data
-    input_field, init_pos, final_pos, output_field, sol = model_fn(
+    result = model_fn(
         blobs_params,
         G=G,
         length=length,
         softening=softening,
         t_f=t_f,
         dt=dt,
-        m_part=m_part,
         key=data_key,
         density_scaling=density_scaling,
         solver=solver,
         **scaling_kwargs
     )
     
+    # Unpack results (now includes masses)
+    if len(result) == 6:
+        input_field, init_pos, final_pos, output_field, sol, masses = result
+    else:
+        # Backward compatibility
+        input_field, init_pos, final_pos, output_field, sol = result
+        masses = jnp.ones(n_part)  # Default unit masses
+    
     if mode == "sim":
         print(f"Simulation completed.")
+        print(f"Total particles: {n_part}, Total mass: {total_mass:.2f}")
     else:
-        print(f"Mock data generated.")  
+        print(f"Mock data generated.")
+        print(f"Total particles: {n_part}, Total mass: {total_mass:.2f}")
     if density_scaling != "none":
         print(f"Density scaling applied: {density_scaling} with parameters: {scaling_kwargs}")
 
@@ -106,7 +116,7 @@ def main(config_path):
 
     if enable_energy_tracking:
             print("Pre-calculating energy for all timesteps...")
-            from utils import calculate_energy
+            from utils import calculate_energy_variable_mass
             all_times = []
             all_ke = []
             all_pe = []
@@ -115,7 +125,7 @@ def main(config_path):
             for i in range(len(sol.ts)):
                 pos_t = sol.ys[i, 0]
                 vel_t = sol.ys[i, 1]
-                ke, pe, te = calculate_energy(pos_t, vel_t, G, length, softening, m_part)
+                ke, pe, te = calculate_energy_variable_mass(pos_t, vel_t, masses, G, length, softening)
                 all_times.append(sol.ts[i])
                 all_ke.append(ke)
                 all_pe.append(pe)
@@ -130,19 +140,21 @@ def main(config_path):
             print("Energy calculation completed.")
     
     if plot_settings['density_field_plot'].get("do"):
-        from plotting import plot_density_fields_and_positions
+        from plotting import plot_density_fields_and_positions, plot_position_vs_radius_blobs
         print("Creating density fields and positions plot...")
         fig = plot_density_fields_and_positions(
             G, t_f, dt, length, n_part, input_field, init_pos, final_pos, output_field, 
             density_scaling=density_scaling, solver=solver,)
         fig.savefig(os.path.join(base_dir, "density_fields_and_positions.png"))
+        fig2 = plot_position_vs_radius_blobs(sol, blobs_params, length, time_idx=0)
+        fig2.savefig(os.path.join(base_dir, "position_vs_radius_blobs.png"))
         print("Density fields and positions plots saved successfully")
     
     if plot_settings['timeseries_plot'].get("do"):
         from plotting import plot_timesteps
         print("Creating timesteps plot...")
         plot_timesteps_num = config.get("plot_timesteps", 10)
-        fig, _ = plot_timesteps(sol, length, G, t_f, dt, n_part, num_timesteps=plot_timesteps_num, softening=softening, m_part=m_part, solver=solver,
+        fig, _ = plot_timesteps(sol, length, G, t_f, dt, n_part, num_timesteps=plot_timesteps_num, softening=softening, masses=masses, solver=solver,
                                 enable_energy_tracking=enable_energy_tracking, density_scaling=density_scaling,
                                 energy_data=energy_data)
         fig.savefig(os.path.join(base_dir, "timesteps.png"))
@@ -163,7 +175,7 @@ def main(config_path):
         print("Creating velocity distributions plot...")
         fig, _ = plot_velocity_distributions(sol, G, t_f, dt, length, n_part, solver)
         fig.savefig(os.path.join(base_dir, "velocity_distributions.png"))
-        fig2 = plot_velocity_vs_radius_blobs(sol, blobs_params, G, t_f, dt, length, n_part, softening, solver)
+        fig2 = plot_velocity_vs_radius_blobs(sol, blobs_params, G, masses, softening)
         fig2.savefig(os.path.join(base_dir, "velocity_wrt_radius.png"))
         print("Velocity distributions plot saved successfully")
  
@@ -176,7 +188,7 @@ def main(config_path):
         
         create_video(sol, length, G, t_f, dt, n_part, 
                     save_path=video_path, fps=fps, dpi=dpi, density_scaling=density_scaling, solver=solver,
-                    softening=softening, m_part=m_part,
+                    softening=softening, masses=masses,
                     enable_energy_tracking=enable_energy_tracking,
                     energy_data=energy_data)
         print("Simulation video saved successfully")

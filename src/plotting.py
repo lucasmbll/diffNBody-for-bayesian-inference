@@ -9,7 +9,8 @@ import corner
 from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
 import cv2
-from utils import calculate_energy
+from utils import calculate_energy, calculate_energy_variable_mass, blob_enclosed_mass_gaussian, blob_enclosed_mass_nfw, blob_enclosed_mass_plummer
+
 
 
 ### Plotting functions for DiffNBody simulations
@@ -198,7 +199,7 @@ def plot_timesteps(sol,
                    dt,
                    n_part,
                    softening,
-                   m_part,
+                   masses,
                    solver,
                    num_timesteps,
                    s=1,
@@ -220,6 +221,8 @@ def plot_timesteps(sol,
         Type of density scaling applied
     energy_data : dict, optional
         Pre-computed energy data with keys 'times', 'kinetic', 'potential', 'total'
+    masses : jnp.array
+        Particle masses
     """
     total_timesteps = len(sol.ts)
     
@@ -253,7 +256,7 @@ def plot_timesteps(sol,
             for i in range(len(sol.ts)):
                 pos_t = sol.ys[i, 0]
                 vel_t = sol.ys[i, 1]
-                ke, pe, te = calculate_energy(pos_t, vel_t, G, boxL, softening, m_part)
+                ke, pe, te = calculate_energy_variable_mass(pos_t, vel_t, masses, G, boxL, softening)
                 all_ke.append(ke)
                 all_pe.append(pe)
                 all_te.append(te)
@@ -270,8 +273,9 @@ def plot_timesteps(sol,
                              squeeze=False)
     
     # Add global title with simulation parameters
+    total_mass = jnp.sum(masses)
     title = 'Simulation with parameters:'
-    param_info = f'G={G}, tf={tf}, dt={dt}, L={boxL}, N={n_part}, density_scaling={density_scaling}, solver={solver}'
+    param_info = f'G={G}, tf={tf}, dt={dt}, L={boxL}, N={n_part}, M_tot={total_mass:.2f}, density_scaling={density_scaling}, solver={solver}'
     if enable_energy_tracking:
         param_info += ', energy_tracking=True'
     
@@ -298,11 +302,11 @@ def plot_timesteps(sol,
             ax.set_xlabel(lbl[0]); ax.set_ylabel(lbl[1])
             ax.set_xlim(0, boxL);  ax.set_ylim(0, boxL)
 
-        # --- density slice --------------------------------------------------
-        field_t = cic_paint(jnp.zeros((boxL, boxL, boxL)), pos_t)
+        # --- density slice (weighted by mass) ------------------------------
+        field_t = cic_paint(jnp.zeros((boxL, boxL, boxL)), pos_t, weight=masses)
         # Apply the same scaling as used in the model
         if density_scaling != "none":
-            from model import apply_density_scaling
+            from utils import apply_density_scaling
             field_t = apply_density_scaling(field_t, density_scaling)
         
         im = axes[row, 3].imshow(jnp.sum(field_t, axis=2),
@@ -670,106 +674,145 @@ def plot_velocity_distributions(sol, G, tf, dt, length, n_part, solver, save_pat
     
     return fig, axes
 
-def plot_velocity_vs_radius_blobs(sol, blobs_params, G, tf, dt, length, n_part, softening, solver, save_path=None, time_idx=0):
+def plot_velocity_vs_radius_blobs(sol, blobs_params, G, masses, softening, time_idx=0):
     """
-    Plot velocity magnitude vs distance to blob center for all blobs in the simulation.
+    Plots particle velocity vs. radius from the center of each blob and compares with theory.
+    Now handles variable masses per blob.
     """
+    fig, ax = plt.subplots(figsize=(10, 8))
+    
+    # Use final state by default
+    positions = sol.ys[time_idx, 0]
+    velocities = sol.ys[time_idx, 1]
+    
+    colors = plt.cm.viridis(np.linspace(0, 1, len(blobs_params)))
+    
+    particle_offset = 0
+    for i, blob in enumerate(blobs_params):
+        n_blob_part = blob['n_part']
+        blob_mass = blob.get('m_part', 1.0)
+        blob_positions = positions[particle_offset : particle_offset + n_blob_part]
+        blob_velocities = velocities[particle_offset : particle_offset + n_blob_part]
+        
+        pos_params = blob['pos_params']
+        vel_params = blob['vel_params']
+        
+        center = jnp.mean(blob_positions, axis=0)
+        
+        rel_pos = blob_positions - center
+        r_particles = jnp.linalg.norm(rel_pos, axis=1)
+        v_particles = jnp.linalg.norm(blob_velocities, axis=1)
+        
+        ax.scatter(r_particles, v_particles, s=5, alpha=0.5, color=colors[i], 
+                  label=f"Blob {i} ({blob['pos_type']}, m={blob_mass:.1f}) Particles")
+        
+        # --- Theoretical Curve Calculation ---
+        max_radius = jnp.max(r_particles)
+        r_theory = jnp.linspace(0, max_radius, 100)
+        
+        M_blob = n_blob_part * blob_mass
+        
+        M_enclosed = None
+        if blob['pos_type'] == 'gaussian':
+            M_enclosed = blob_enclosed_mass_gaussian(r_theory, M_blob, pos_params['sigma'])
+        elif blob['pos_type'] == 'nfw':
+            M_enclosed = blob_enclosed_mass_nfw(r_theory, M_blob, pos_params['rs'], pos_params['c'])
+        elif blob['pos_type'] == 'plummer':
+            M_enclosed = blob_enclosed_mass_plummer(r_theory, M_blob, pos_params['rs'])
+        
+        if M_enclosed is not None and 'circular' in blob['vel_type']:
+            vel_factor = vel_params.get('vel_factor', 1.0)
+            v_theory = jnp.sqrt(G * M_enclosed / jnp.sqrt(r_theory**2 + softening**2)) * vel_factor
+            ax.plot(r_theory, v_theory, color=colors[i], linestyle='--', lw=2, 
+                   label=f"Blob {i} Theory")
+            
+        particle_offset += n_blob_part
 
+    ax.set_xlabel("Radius from Blob Center")
+    ax.set_ylabel("Velocity Magnitude")
+    ax.set_title(f"Velocity vs. Radius at t={sol.ts[time_idx]:.2f}")
+    ax.legend()
+    ax.grid(True, linestyle=':', alpha=0.6)
+    
+    plt.tight_layout()
+    return fig
+
+def plot_position_vs_radius_blobs(sol, blobs_params, length, time_idx=0):
+    """
+    Plot particle positions in each projection (XY, XZ, YZ) vs distance to blob center for all blobs,
+    plus a histogram of particle count vs radius, in a single row of 4 subplots.
+    """
     positions = sol.ys[time_idx, 0]  # Positions at specified time
-    velocities = sol.ys[time_idx, 1]  # Velocities at specified time
     time = sol.ts[time_idx]
-    
-    vel_magnitudes = jnp.sqrt(jnp.sum(velocities**2, axis=1))
-    
-    fig, ax = plt.subplots(1, 1, figsize=(12, 8))
-    
+
+    fig, axes = plt.subplots(1, 4, figsize=(28, 6))
+    proj_labels = [('X', 'Y'), ('X', 'Z'), ('Y', 'Z')]
+    proj_indices = [(0, 1), (0, 2), (1, 2)]
+
     particle_idx = 0
     colors = plt.cm.tab10(np.linspace(0, 1, len(blobs_params)))
-    
+
     for blob_idx, blob in enumerate(blobs_params):
         n_blob_particles = blob['n_part']
         blob_center = jnp.array(blob['pos_params']['center'])
-        
         blob_positions = positions[particle_idx:particle_idx + n_blob_particles]
-        blob_velocities = vel_magnitudes[particle_idx:particle_idx + n_blob_particles]
-        
+
         dx = blob_positions - blob_center
         dx = dx - length * jnp.round(dx / length)
         distances = jnp.sqrt(jnp.sum(dx**2, axis=1))
-        
+
         pos_type = blob['pos_type']
-        vel_type = blob['vel_type']
-        
-        # Extract velocity factor for label and theoretical curve
-        vel_factor = 1.0  # Default value
-        if vel_type == 'circular' and 'vel_factor' in blob['vel_params']:
-            vel_factor = blob['vel_params']['vel_factor']
-        
-        # Create blob label with velocity factor information
+
+        # Label for legend
         if pos_type == 'gaussian':
             sigma = blob['pos_params']['sigma']
-            if vel_type == 'circular':
-                blob_label = f"Blob {blob_idx}: Gaussian (σ={sigma:.1f}), {vel_type} (factor={vel_factor:.1f})"
-            else:
-                blob_label = f"Blob {blob_idx}: Gaussian (σ={sigma:.1f}), {vel_type}"
+            blob_label = f"Blob {blob_idx}: Gaussian (σ={sigma:.1f})"
         elif pos_type == 'nfw':
             rs = blob['pos_params']['rs']
             c = blob['pos_params']['c']
-            if vel_type == 'circular':
-                blob_label = f"Blob {blob_idx}: NFW (rs={rs:.1f}, c={c:.1f}), {vel_type} (factor={vel_factor:.1f})"
-            else:
-                blob_label = f"Blob {blob_idx}: NFW (rs={rs:.1f}, c={c:.1f}), {vel_type}"
+            blob_label = f"Blob {blob_idx}: NFW (rs={rs:.1f}, c={c:.1f})"
+        elif pos_type == 'plummer':
+            rs = blob['pos_params']['rs']
+            blob_label = f"Blob {blob_idx}: Plummer (rs={rs:.1f})"
         else:
-            if vel_type == 'circular':
-                blob_label = f"Blob {blob_idx}: {pos_type}, {vel_type} (factor={vel_factor:.1f})"
-            else:
-                blob_label = f"Blob {blob_idx}: {pos_type}, {vel_type}"
-        
-        ax.scatter(distances, blob_velocities, 
-                   color=colors[blob_idx], alpha=0.6, s=20, 
-                   label=blob_label)
-        
-        # Theoretical circular velocity curve
-        if vel_type == 'circular':
-            r_theory = jnp.linspace(0.1, jnp.max(distances) * 1.2, 100)
+            blob_label = f"Blob {blob_idx}: {pos_type}"
 
-            if pos_type == 'gaussian':
-                from utils import blob_enclosed_mass_gaussian
-                sigma = blob['pos_params']['sigma']
-                M_blob = n_blob_particles
-                M_enclosed = blob_enclosed_mass_gaussian(r_theory, M_blob, sigma)
-            elif pos_type == 'nfw':
-                from utils import blob_enclosed_mass_nfw
-                rs = blob['pos_params']['rs']
-                c = blob['pos_params']['c']
-                M_blob = n_blob_particles
-                M_enclosed = blob_enclosed_mass_nfw(r_theory, M_blob, rs, c)
-            else:
-                M_enclosed = jnp.zeros_like(r_theory)
+        for ax, (i, j), (lbl_i, lbl_j) in zip(axes[:3], proj_indices, proj_labels):
+            ax.scatter(distances, blob_positions[:, i], color=colors[blob_idx], alpha=0.6, s=20, label=blob_label if ax == axes[0] else None)
+            ax.set_xlabel("Distance to blob center")
+            ax.set_ylabel(f"{lbl_i} coordinate")
+            ax.set_title(f"{lbl_i} vs Radius (t={time:.2f})")
 
-            v_theory = jnp.sqrt(G * M_enclosed / jnp.sqrt(r_theory**2 + softening**2)) * vel_factor
-
-            ax.plot(r_theory, v_theory, color=colors[blob_idx], linewidth=2, linestyle='--')
+        # Add histogram to the 4th subplot
+        axes[3].hist(distances, bins=30, color=colors[blob_idx], alpha=0.5, label=f"Blob {blob_idx}")
 
         particle_idx += n_blob_particles
 
-    ax.set_xlabel("Distance to blob center")
-    ax.set_ylabel("Velocity magnitude")
-    ax.set_title(f"Velocity vs Radius at t = {time:.2f} ({solver}, dt={dt}, G={G})")
-    ax.grid(True)
-    ax.legend()
-    
-    if save_path:
-        fig.savefig(save_path, dpi=300)
-    
+    # Add legends only to the first and last subplot
+    axes[0].legend()
+    axes[3].legend()
+    for ax, (lbl_i, lbl_j) in zip(axes[:3], proj_labels):
+        ax.grid(True)
+    axes[3].set_xlabel("Distance to blob center")
+    axes[3].set_ylabel("Number of particles")
+    axes[3].set_title("Particle count vs radius")
+    axes[3].grid(True)
+    plt.tight_layout()
     return fig
 
+
+
+
 def create_video(
-    sol, length, G, t_f, dt, n_part, density_scaling, solver, softening=0.1, m_part=1.0, 
+    sol, length, G, t_f, dt, n_part, density_scaling, solver, softening=0.1, masses=None, 
     enable_energy_tracking=True, save_path=None, fps=10, dpi=100, energy_data=None
 ):
     import matplotlib.animation as animation
     import shutil
+
+    # Default to unit masses if not provided
+    if masses is None:
+        masses = jnp.ones(n_part)
 
     # Check ffmpeg
     if not shutil.which('ffmpeg'):
@@ -794,7 +837,7 @@ def create_video(
             for i in range(len(sol.ts)):
                 pos = sol.ys[i, 0]
                 vel = sol.ys[i, 1]
-                ke, pe, te = calculate_energy(pos, vel, G, length, softening, m_part)
+                ke, pe, te = calculate_energy_variable_mass(pos, vel, masses, G, length, softening)
                 all_times.append(sol.ts[i])
                 all_ke.append(ke)
                 all_pe.append(pe)
@@ -865,9 +908,9 @@ def create_video(
     ax_yz.grid(True, alpha=0.3)
 
     # --- Density Field projections (imshow) ---
-    density_field = cic_paint(jnp.zeros((length, length, length)), pos)
+    density_field = cic_paint(jnp.zeros((length, length, length)), pos, weight=masses)
     if density_scaling != "none":
-        from model import apply_density_scaling
+        from utils import apply_density_scaling
         density_field = apply_density_scaling(density_field, density_scaling)
 
     ax_density_xy = axes[1, 0]
@@ -940,7 +983,7 @@ def create_video(
         ax_yz.set_title(f'YZ Projection (t={current_time:.3f})')
 
         # Update density fields
-        density_field = cic_paint(jnp.zeros((length, length, length)), pos)
+        density_field = cic_paint(jnp.zeros((length, length, length)), pos, weight=masses)
         if density_scaling != "none":
             from model import apply_density_scaling
             density_field = apply_density_scaling(density_field, density_scaling)

@@ -51,6 +51,9 @@ def extract_params_to_infer(init_params):
             params_to_infer[f"blob{blob_idx}_rs"] = blob['pos_params']['rs']
             params_to_infer[f"blob{blob_idx}_c"] = blob['pos_params']['c']
             params_to_infer[f"blob{blob_idx}_center"] = blob['pos_params']['center']
+        elif blob['pos_type'] == 'plummer':
+            params_to_infer[f"blob{blob_idx}_rs"] = blob['pos_params']['rs']
+            params_to_infer[f"blob{blob_idx}_center"] = blob['pos_params']['center']
         
         # Extract velocity parameters
         if blob['vel_type'] == 'cold':
@@ -111,7 +114,7 @@ def run_nuts(log_posterior, initial_position, rng_key, num_samples, num_warmup=1
     
     if hasattr(warmup_info, 'acceptance_rate'):
         print(f"Warmup acceptance rate: {warmup_info.acceptance_rate:.3f}")
-    
+
     print("\n" + "STARTING SAMPLING PHASE")
     sampling_start_time = time.time()
     

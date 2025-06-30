@@ -1,7 +1,7 @@
 # Configuration for N-body simulation using blobs model
 
 # --- HARDWARE/CLUSTER SETTINGS ---
-cuda_visible_devices: 3  # GPU index to use
+cuda_visible_devices: 4  # GPU index to use
 
 # --- EXPERIMENT MODE and MISCELLANEOUS ---
 mode: sim      # Experiment mode (options: "sim", "sampling")
@@ -44,8 +44,9 @@ model_params:
   
   # Blob parameters - a list of blob configurations
   blobs_params:
-    # Blob 1: Gaussian with circular velocities
+    # Blob 1: Gaussian with circular velocities (heavy particles)
       - n_part: 1000
+        m_part: 2.0  # Heavy particles
         pos_type: gaussian
         pos_params:
           sigma: 8.0
@@ -55,8 +56,9 @@ model_params:
           vel_factor: 1.0  # Multiplier for circular velocity
           distrib: False # Use circular velocity distribution or proxy
 
-      # Blob 2: NFW with virial velocities
+      # Blob 2: NFW with virial velocities (medium particles)
       - n_part: 1000
+        m_part: 1.0  # Standard mass
         pos_type: nfw
         pos_params:
           rs: 5.0          # Scale radius
@@ -66,8 +68,9 @@ model_params:
         vel_params:
           virial_ratio: 0.5  # Sub-virial (cold) initial condition
 
-      # Blob 3: Gaussian with cold velocities
+      # Blob 3: Gaussian with cold velocities (light particles)
       - n_part: 1000
+        m_part: 0.5  # Light particles
         pos_type: gaussian
         pos_params:
           sigma: 6.0
@@ -75,4 +78,16 @@ model_params:
         vel_type: cold
         vel_params:
           vel_dispersion: 0.1  # Small random velocities
+          
+      # Blob 4: Plummer sphere (heavy particles)
+      - n_part: 1000
+        m_part: 3.0  # Very heavy particles
+        pos_type: plummer
+        pos_params:
+          rs: 5.0  # Plummer radius
+          center: [32.0, 32.0, 32.0]
+        vel_type: circular
+        vel_params:
+          vel_factor: 1.0
+          distrib: true  # Use distribution-specific circular velocities
 

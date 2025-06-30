@@ -55,6 +55,13 @@ def log_likelihood_1(parameters, data, noise, model_fn, init_params=None, **kwar
             if f"blob{blob_idx}_center" in parameters:
                 updated_pos_params['center'] = parameters[f"blob{blob_idx}_center"]
             updated_blob['pos_params'] = updated_pos_params
+        elif updated_blob['pos_type'] == 'plummer':
+            updated_pos_params = dict(updated_blob['pos_params'])
+            if f"blob{blob_idx}_rs" in parameters:
+                updated_pos_params['rs'] = parameters[f"blob{blob_idx}_rs"]
+            if f"blob{blob_idx}_center" in parameters:
+                updated_pos_params['center'] = parameters[f"blob{blob_idx}_center"]
+            updated_blob['pos_params'] = updated_pos_params
         
         # Update velocity parameters if needed
         updated_vel_params = dict(updated_blob['vel_params'])
@@ -72,8 +79,11 @@ def log_likelihood_1(parameters, data, noise, model_fn, init_params=None, **kwar
     out = model_fn(updated_params, **kwargs)
     output_field = out[3]  # Extract output_field
         
-    
-    # Calculate likelihood
+    return compute_likelihood_1(output_field, data, noise)
+
+@jax.jit
+def compute_likelihood_1(output_field, data, noise):
+    """JIT-compiled core likelihood computation"""
     residuals = output_field - data
     n_points = data.size
     chi2 = jnp.sum(residuals ** 2) / noise**2
@@ -140,6 +150,13 @@ def log_likelihood_2(parameters, data, noise, n_realizations, model_fn, model_ty
                     if f"blob{blob_idx}_center" in parameters:
                         updated_pos_params['center'] = parameters[f"blob{blob_idx}_center"]
                     updated_blob['pos_params'] = updated_pos_params
+                elif updated_blob['pos_type'] == 'plummer':
+                    updated_pos_params = dict(updated_blob['pos_params'])
+                    if f"blob{blob_idx}_rs" in parameters:
+                        updated_pos_params['rs'] = parameters[f"blob{blob_idx}_rs"]
+                    if f"blob{blob_idx}_center" in parameters:
+                        updated_pos_params['center'] = parameters[f"blob{blob_idx}_center"]
+                    updated_blob['pos_params'] = updated_pos_params
                 
                 # Update velocity parameters if needed
                 updated_vel_params = dict(updated_blob['vel_params'])
@@ -173,6 +190,7 @@ def log_likelihood_2(parameters, data, noise, n_realizations, model_fn, model_ty
 
 
 # Define priors
+
 def blob_gaussian_prior(params_dict, prior_params):
     """
     Gaussian prior for blob parameters.
@@ -322,7 +340,6 @@ def get_log_posterior(likelihood_type, data, prior_params=None, prior_type="gaus
     def log_posterior(params_dict):
         log_p = prior_fn(params_dict, prior_params)
         log_lik = log_likelihood_fn(params_dict)
-        #print(f"Log prior: {log_p}, Log likelihood: {log_lik}, Gradient: {jax.grad(log_likelihood_fn)(params_dict)}")
         return log_p + log_lik
 
     return log_posterior

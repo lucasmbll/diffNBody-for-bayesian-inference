@@ -25,6 +25,30 @@ def calculate_energy(pos, vel, G, length, softening, m_part):
     
     return ke, pe, total_energy
 
+def calculate_energy_variable_mass(pos, vel, masses, G, length, softening):
+    """Calculate kinetic, potential, and total energy of the system with variable masses"""
+    n_particles = pos.shape[0]
+    
+    # Kinetic energy (each particle has its own mass)
+    ke = 0.5 * jnp.sum(masses * jnp.sum(vel**2, axis=1))
+    
+    # Potential energy with periodic boundaries and variable masses
+    dx = pos[:, None, :] - pos[None, :, :]
+    dx = dx - length * jnp.round(dx / length)  # periodic boundaries
+    r2 = jnp.sum(dx**2, axis=-1) + softening**2  # softening squared
+    r = jnp.sqrt(r2)
+    
+    # Mass matrix for pairwise interactions
+    mass_matrix = masses[:, None] * masses[None, :]
+    
+    # Upper triangular part to avoid double counting, exclude diagonal
+    mask = jnp.triu(jnp.ones((n_particles, n_particles)), k=1)
+    pe = -G * jnp.sum(mask * mass_matrix / r)
+    
+    total_energy = ke + pe
+    
+    return ke, pe, total_energy
+
 def blob_enclosed_mass_gaussian(r, M, sigma):
     """
     Calculate the enclosed mass for a Gaussian blob.
@@ -47,7 +71,6 @@ def blob_enclosed_mass_gaussian(r, M, sigma):
     term1 = erf(x)
     term2 = jnp.sqrt(2 / jnp.pi) * x * jnp.exp(-x**2)
     return M * (term1 - term2)
-
 
 def blob_enclosed_mass_nfw(r, M, rs, c):
         """
@@ -75,6 +98,30 @@ def blob_enclosed_mass_nfw(r, M, rs, c):
         # Ensure no negative or nan values for r=0
         enclosed = jnp.where(r > 0, enclosed, 0.0)
         return M * enclosed
+
+def blob_enclosed_mass_plummer(r, M, rs):
+    """
+    Calculate the enclosed mass for a Plummer sphere.
+    
+    Parameters:
+    -----------
+    r : jnp.array
+        Radial distances
+    M : float
+        Total mass
+    rs : float
+        Plummer radius (scale radius)
+        
+    Returns:
+    --------
+    M_enclosed : jnp.array
+        Enclosed mass at each radius r
+    """
+    x = r / rs
+    enclosed = x**3 / (1 + x**2)**(3.0/2.0)
+    # Ensure no negative values for r=0
+    enclosed = jnp.where(r > 0, enclosed, 0.0)
+    return M * enclosed
 
 def apply_density_scaling(density_field, scaling_type="none", **scaling_kwargs):
     """
@@ -161,6 +208,9 @@ def extract_true_values_from_blobs(blobs_params):
             elif blob['pos_type'] == 'nfw':
                 true_values[f"blob{blob_idx}_rs"] = blob['pos_params']['rs']
                 true_values[f"blob{blob_idx}_c"] = blob['pos_params']['c']
+                true_values[f"blob{blob_idx}_center"] = blob['pos_params']['center']
+            elif blob['pos_type'] == 'plummer':
+                true_values[f"blob{blob_idx}_rs"] = blob['pos_params']['rs']
                 true_values[f"blob{blob_idx}_center"] = blob['pos_params']['center']
             
             # Extract velocity parameters
