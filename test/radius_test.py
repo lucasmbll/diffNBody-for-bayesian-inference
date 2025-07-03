@@ -16,48 +16,6 @@ sys.path.append(str(Path(__file__).parent.parent / "src"))
 # Import local modules
 from model import model
 
-def calculate_blob_radius(positions, center, percentile=90):
-    """
-    Calculate the radius containing a given percentile of particles.
-    
-    Parameters:
-    -----------
-    positions : jnp.array
-        Particle positions (N, 3)
-    center : jnp.array
-        Center position (3,)
-    percentile : float
-        Percentile for radius calculation (default: 90th percentile)
-        
-    Returns:
-    --------
-    radius : float
-        Radius containing the specified percentile of particles
-    """
-    # Calculate distances from center
-    distances = jnp.linalg.norm(positions - center, axis=1)
-    
-    # Return the percentile radius
-    return jnp.percentile(distances, percentile)
-
-def calculate_rms_radius(positions, center):
-    """
-    Calculate the RMS radius of the blob.
-    
-    Parameters:
-    -----------
-    positions : jnp.array
-        Particle positions (N, 3)
-    center : jnp.array
-        Center position (3,)
-        
-    Returns:
-    --------
-    rms_radius : float
-        RMS radius of the blob
-    """
-    distances_squared = jnp.sum((positions - center)**2, axis=1)
-    return jnp.sqrt(jnp.mean(distances_squared))
 
 def run_radius_test(config_path):
     """
