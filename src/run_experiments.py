@@ -9,17 +9,14 @@ import argparse
 import shutil
 import numpy as np
 from typing import List
+from mpi4py import MPI
 
 # GPU configuration 
 def check_mpi_mode():
-    try:
-        from mpi4py import MPI
-        comm = MPI.COMM_WORLD
-        if comm.Get_size() > 1:
-            return True, comm, comm.Get_rank(), comm.Get_size()
-    except ImportError:
-        pass
-    return False, 0, 1
+    comm = MPI.COMM_WORLD
+    if comm.Get_size() > 1:
+        return True, comm, comm.Get_rank(), comm.Get_size()
+    return False, 0, 1, None
 
 def setup_mpi_gpu_assignment(gpu_devices: List[int], rank: int):
     assigned_gpu = gpu_devices[rank]
@@ -97,29 +94,54 @@ def main(config_path):
     total_mass = sum(blob['n_part'] * blob.get('m_part', 1.0) for blob in blobs_params)
 
     # Run model for simulation (sim mode) or mock data generation (sampling mode)
-    result = model_fn(
-        blobs_params,
-        G=G,
-        length=length,
-        softening=softening,
-        t_f=t_f,
-        dt=dt,
-        key=data_key,
-        density_scaling=density_scaling,
-        solver=solver,
-        **scaling_kwargs
-    )
+    if not use_mpi or rank == 0:  # Only one process runs the model 
+        result = model_fn(
+            blobs_params,
+            G=G,
+            length=length,
+            softening=softening,
+            t_f=t_f,
+            dt=dt,
+            key=data_key,
+            density_scaling=density_scaling,
+            solver=solver,
+            **scaling_kwargs
+        )
+        
+        input_field, output_field, sol_ts, sol_ys, masses = result
+
+        if mode == "sim":
+            print(f"Simulation completed.")
+            print(f"Total particles: {n_part}, Total mass: {total_mass:.2f}")
+        else:
+            print(f"Mock data generated.")
+            print(f"Total particles: {n_part}, Total mass: {total_mass:.2f}") 
     
-    input_field, init_pos, final_pos, output_field, sol, masses = result
-    
-    if mode == "sim":
-        print(f"Simulation completed.")
-        print(f"Total particles: {n_part}, Total mass: {total_mass:.2f}")
-    else:
-        print(f"Mock data generated.")
-        print(f"Total particles: {n_part}, Total mass: {total_mass:.2f}")
-    if density_scaling != "none":
-        print(f"Density scaling applied: {density_scaling} with parameters: {scaling_kwargs}")
+    if use_mpi:  # If using MPI, we need to broadcast the data to all processes
+        comm = MPI.COMM_WORLD
+        
+        if rank == 0:
+            # Root process prepares data for broadcasting
+            shared_data = {
+                'input_field': np.array(input_field),
+                'output_field': np.array(output_field),
+                'sol_ts': np.array(sol_ts),
+                'sol_ys': np.array(sol_ys),
+                'masses': np.array(masses)
+            }
+        else:
+            shared_data = None
+        
+        # Broadcast to all processes
+        shared_data = comm.bcast(shared_data, root=0)
+        
+        # Convert back to JAX arrays on non-root processes
+        if rank != 0:
+            input_field = jnp.array(shared_data['input_field'])
+            output_field = jnp.array(shared_data['output_field'])
+            masses = jnp.array(shared_data['masses'])
+            sol_ys = jnp.array(shared_data['sol_ys'])
+            sol_ts = jnp.array(shared_data['sol_ts'])
 
     data = output_field  # This is the mock data we will use for inference (sampling mode)
 
@@ -138,11 +160,11 @@ def main(config_path):
             all_pe = []
             all_te = []
             
-            for i in range(len(sol.ts)):
-                pos_t = sol.ys[i, 0]
-                vel_t = sol.ys[i, 1]
+            for i in range(len(sol_ts)):
+                pos_t = sol_ys[i, 0]
+                vel_t = sol_ys[i, 1]
                 ke, pe, te = calculate_energy_variable_mass(pos_t, vel_t, masses, G, length, softening)
-                all_times.append(sol.ts[i])
+                all_times.append(sol_ts[i])
                 all_ke.append(ke)
                 all_pe.append(pe)
                 all_te.append(te)
@@ -159,10 +181,10 @@ def main(config_path):
         from plotting import plot_density_fields_and_positions, plot_position_vs_radius_blobs
         print("Creating density fields and positions plot...")
         fig = plot_density_fields_and_positions(
-            G, t_f, dt, length, n_part, input_field, init_pos, final_pos, output_field, 
+            G, t_f, dt, length, n_part, input_field, sol_ys[0, 0], sol_ys[-1, 0], output_field, 
             density_scaling=density_scaling, solver=solver,)
         fig.savefig(os.path.join(base_dir, "density_fields_and_positions.png"))
-        fig2 = plot_position_vs_radius_blobs(sol, blobs_params, length, time_idx=0)
+        fig2 = plot_position_vs_radius_blobs(sol_ts, sol_ys, blobs_params, length, time_idx=0)
         fig2.savefig(os.path.join(base_dir, "position_vs_radius_blobs.png"))
         print("Density fields and positions plots saved successfully")
     
@@ -170,7 +192,7 @@ def main(config_path):
         from plotting import plot_timesteps
         print("Creating timesteps plot...")
         plot_timesteps_num = config.get("plot_timesteps", 10)
-        fig, _ = plot_timesteps(sol, length, G, t_f, dt, n_part, num_timesteps=plot_timesteps_num, softening=softening, masses=masses, solver=solver,
+        fig, _ = plot_timesteps(sol_ts, sol_ys, length, G, t_f, dt, n_part, num_timesteps=plot_timesteps_num, softening=softening, masses=masses, solver=solver,
                                 enable_energy_tracking=enable_energy_tracking, density_scaling=density_scaling,
                                 energy_data=energy_data)
         fig.savefig(os.path.join(base_dir, "timesteps.png"))
@@ -181,7 +203,7 @@ def main(config_path):
         print("Creating trajectories plot...")
         num_trajectories = plot_settings['trajectories_plot'].get("num_trajectories", 10)
         zoom = plot_settings['trajectories_plot'].get("zoom_for_trajectories", True)
-        fig = plot_trajectories(sol, G, t_f, dt, length, n_part, solver, num_trajectories=num_trajectories, 
+        fig = plot_trajectories(sol_ys, G, t_f, dt, length, n_part, solver, num_trajectories=num_trajectories, 
                                 zoom=zoom)
         fig.savefig(os.path.join(base_dir, "trajectories.png"))
         print("Trajectories plot saved successfully")
@@ -189,13 +211,13 @@ def main(config_path):
     if plot_settings['velocity_plot'].get("do"):
         from plotting import plot_velocity_distributions, plot_velocity_vs_radius_blobs
         print("Creating velocity distributions plot...")
-        fig, _ = plot_velocity_distributions(sol, G, t_f, dt, length, n_part, solver)
+        fig, _ = plot_velocity_distributions(sol_ys, G, t_f, dt, length, n_part, solver)
         fig.savefig(os.path.join(base_dir, "velocity_distributions.png"))
-        fig2 = plot_velocity_vs_radius_blobs(sol, blobs_params, G, masses, softening)
+        fig2 = plot_velocity_vs_radius_blobs(sol_ts, sol_ys, blobs_params, G, masses, softening)
         fig2.savefig(os.path.join(base_dir, "velocity_wrt_radius.png"))
         print("Velocity distributions plot saved successfully")
  
-    if plot_settings['generate_video'].get("do"):
+    if plot_settings['generate_video'].get("do"): # need to be corrected
         print("Creating simulation video...")
         from plotting import create_video
         video_path = os.path.join(base_dir, "simulation_video.mp4")

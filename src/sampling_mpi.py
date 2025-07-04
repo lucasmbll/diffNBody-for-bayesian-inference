@@ -290,7 +290,7 @@ def run_mpi_sampling(sampler_type: str,
     if rank == 0:
         # Prepare final samples for return (combine all chains for corner plotting)
         final_samples = {}
-        for param_name in param_names:
+        for param_name in local_samples.keys():
             all_chain_samples = []
             
             # Collect samples from all processes and chains

@@ -167,5 +167,5 @@ def model(
     input_field = apply_density_scaling(raw_input_field, density_scaling, **scaling_kwargs)
     output_field = apply_density_scaling(raw_output_field, density_scaling, **scaling_kwargs)
     
-    return input_field, init_pos, final_pos, output_field, sol, masses
+    return input_field, output_field, sol.ts, sol.ys, masses
 

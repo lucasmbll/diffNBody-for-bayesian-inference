@@ -77,7 +77,7 @@ def log_likelihood_1(parameters, data, noise, model_fn, init_params=None, **kwar
         
     # Run the model with updated parameters
     out = model_fn(updated_params, **kwargs)
-    output_field = out[3]  # Extract output_field
+    output_field = out[1]  # Extract output_field
         
     return compute_likelihood_1(output_field, data, noise)
 
@@ -172,12 +172,12 @@ def log_likelihood_2(parameters, data, noise, n_realizations, model_fn, model_ty
             
             # Run the model with updated parameters
             model_output = model_fn(updated_params, **kwargs_with_key)
-            model_output = model_output[3]  # Extract output_field
+            model_output = model_output[1]  # Extract output_field
             
         else:
             # Legacy format: parameters is an array
             model_output = model_fn(parameters, **kwargs_with_key)
-            model_output = model_output[3]  # output_field is the 4th output
+            model_output = model_output[1]  # output_field is the 4th output
         
         # Calculate likelihood
         sq_errors = jnp.sum((model_output - data) ** 2)

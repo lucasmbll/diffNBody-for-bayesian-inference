@@ -192,7 +192,8 @@ def plot_density_fields_and_positions(G, tf, dt, length, n_part, input_field, in
     plt.show()
     return fig
 
-def plot_timesteps(sol,
+def plot_timesteps(sol_ts,
+                   sol_ys,
                    boxL,
                    G,    
                    tf,
@@ -224,7 +225,7 @@ def plot_timesteps(sol,
     masses : jnp.array
         Particle masses
     """
-    total_timesteps = len(sol.ts)
+    total_timesteps = len(sol_ts)
     
     # Determine skip based on num_timesteps
     if num_timesteps >= total_timesteps:
@@ -233,11 +234,11 @@ def plot_timesteps(sol,
         skip = max(1, total_timesteps // num_timesteps)
     
     # How many rows will we draw?
-    steps = sol.ts[::skip]
+    steps = sol_ts[::skip]
     nrows = len(steps)
 
     # Use pre-computed energy data if available, otherwise compute if needed
-    all_times = sol.ts
+    all_times = sol_ts
     all_ke = all_pe = all_te = None
     
     if enable_energy_tracking:
@@ -253,9 +254,9 @@ def plot_timesteps(sol,
             all_pe = []
             all_te = []
             
-            for i in range(len(sol.ts)):
-                pos_t = sol.ys[i, 0]
-                vel_t = sol.ys[i, 1]
+            for i in range(len(sol_ts)):
+                pos_t = sol_ys[i, 0]
+                vel_t = sol_ys[i, 1]
                 ke, pe, te = calculate_energy_variable_mass(pos_t, vel_t, masses, G, boxL, softening)
                 all_ke.append(ke)
                 all_pe.append(pe)
@@ -287,8 +288,8 @@ def plot_timesteps(sol,
 
     for row, t in enumerate(steps): 
         current_step = row * skip
-        pos_t = sol.ys[current_step, 0]
-        vel_t = sol.ys[current_step, 1]
+        pos_t = sol_ys[current_step, 0]
+        vel_t = sol_ys[current_step, 1]
         
         # --- projections ----------------------------------------------------
         axes[row, 0].scatter(pos_t[:, 0], pos_t[:, 1], s=s)
@@ -352,8 +353,8 @@ def plot_timesteps(sol,
     plt.show()
     return fig, axes
 
-def plot_trajectories(solution, G, tf, dt, length, n_part, solver, num_trajectories=10, figsize=(20, 5), zoom=True, padding=0.1, smooth_window=5):    
-    positions = solution.ys[:, 0]
+def plot_trajectories(sol_ys, G, tf, dt, length, n_part, solver, num_trajectories=10, figsize=(20, 5), zoom=True, padding=0.1, smooth_window=5):    
+    positions = sol_ys[:, 0]
     num_steps, n_particles, _ = positions.shape
 
     # Select random trajectories to plot
@@ -488,13 +489,13 @@ def plot_trajectories(solution, G, tf, dt, length, n_part, solver, num_trajector
     return fig
 
 
-def plot_velocity_distributions(sol, G, tf, dt, length, n_part, solver, save_path=None, quiver_stride=5):
+def plot_velocity_distributions(sol_ys, G, tf, dt, length, n_part, solver, save_path=None, quiver_stride=5):
     # Calculate velocity norms for initial and final velocities
-    init_vel = sol.ys[0, 1]  # Initial velocities
-    init_pos = sol.ys[0, 0]  # Initial positions
+    init_vel = sol_ys[0, 1]  # Initial velocities
+    init_pos = sol_ys[0, 0]  # Initial positions
     init_vel_norm = jnp.sqrt(jnp.sum(init_vel**2, axis=1))
-    final_vel = sol.ys[-1, 1]  # Final velocities
-    final_pos = sol.ys[-1, 0]  # Final positions
+    final_vel = sol_ys[-1, 1]  # Final velocities
+    final_pos = sol_ys[-1, 0]  # Final positions
     final_vel_norm = jnp.sqrt(jnp.sum(final_vel**2, axis=1))
 
     # Create a figure with 4 rows and 4 columns
@@ -674,7 +675,7 @@ def plot_velocity_distributions(sol, G, tf, dt, length, n_part, solver, save_pat
     
     return fig, axes
 
-def plot_velocity_vs_radius_blobs(sol, blobs_params, G, masses, softening, time_idx=0):
+def plot_velocity_vs_radius_blobs(sol_ts, sol_ys, blobs_params, G, masses, softening, time_idx=0):
     """
     Plots particle velocity vs. radius from the center of each blob and compares with theory.
     Now handles variable masses per blob.
@@ -682,8 +683,8 @@ def plot_velocity_vs_radius_blobs(sol, blobs_params, G, masses, softening, time_
     fig, ax = plt.subplots(figsize=(10, 8))
     
     # Use final state by default
-    positions = sol.ys[time_idx, 0]
-    velocities = sol.ys[time_idx, 1]
+    positions = sol_ys[time_idx, 0]
+    velocities = sol_ys[time_idx, 1]
     
     colors = plt.cm.viridis(np.linspace(0, 1, len(blobs_params)))
     
@@ -730,20 +731,20 @@ def plot_velocity_vs_radius_blobs(sol, blobs_params, G, masses, softening, time_
 
     ax.set_xlabel("Radius from Blob Center")
     ax.set_ylabel("Velocity Magnitude")
-    ax.set_title(f"Velocity vs. Radius at t={sol.ts[time_idx]:.2f}")
+    ax.set_title(f"Velocity vs. Radius at t={sol_ts[time_idx]:.2f}")
     ax.legend()
     ax.grid(True, linestyle=':', alpha=0.6)
     
     plt.tight_layout()
     return fig
 
-def plot_position_vs_radius_blobs(sol, blobs_params, length, time_idx=0):
+def plot_position_vs_radius_blobs(sol_ts, sol_ys, blobs_params, length, time_idx=0):
     """
     Plot particle positions in each projection (XY, XZ, YZ) vs distance to blob center for all blobs,
     plus a histogram of particle count vs radius, in a single row of 4 subplots.
     """
-    positions = sol.ys[time_idx, 0]  # Positions at specified time
-    time = sol.ts[time_idx]
+    positions = sol_ys[time_idx, 0]  # Positions at specified time
+    time = sol_ts[time_idx]
 
     fig, axes = plt.subplots(1, 4, figsize=(28, 6))
     proj_labels = [('X', 'Y'), ('X', 'Z'), ('Y', 'Z')]
