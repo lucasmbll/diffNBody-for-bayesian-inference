@@ -83,7 +83,6 @@ prior_params:
 sampler: hmc            # Hamiltonian Monte Carlo sampler
 num_samples: 2000       # Number of MCMC samples to draw
 sampling_seed: 12345    # Random seed for reproducibility
-progress_bar: false      # Show progress bar during sampling
 
 # Parallel sampling options:
 n_chains: 1             # Number of parallel chains (1 = single chain, >1 = parallel chains)

@@ -6,66 +6,17 @@ import blackjax
 import numpy as np
 import time
 
-def inference_loop(rng_key, kernel, initial_state, num_samples, progress_bar=False):
-    if not progress_bar:
-        @jax.jit
-        def one_step(state, rng_key):
-            state, _ = kernel(rng_key, state)
-            return state, state
-        keys = jax.random.split(rng_key, num_samples)
-        _, states = jax.lax.scan(one_step, initial_state, keys)
-        return states
-    else:
-        from tqdm import tqdm
-        state = initial_state
-        states = []
-        keys = jax.random.split(rng_key, num_samples)
-        for i in tqdm(range(num_samples), desc="Sampling"):
-            state, _ = kernel(keys[i], state)
-            states.append(state)
-        # Stack states to match lax.scan output
-        return jax.tree_util.tree_map(lambda *xs: np.stack(xs), *states)
+def inference_loop(rng_key, kernel, initial_state, num_samples):
+    @jax.jit
+    def one_step(state, rng_key):
+        state, _ = kernel(rng_key, state)
+        return state, state
+    keys = jax.random.split(rng_key, num_samples)
+    _, states = jax.lax.scan(one_step, initial_state, keys)
+    return states
+    
 
-def extract_params_to_infer(init_params):
-    """
-    Extract parameters to infer from initialization parameters.
-    
-    Parameters:
-    -----------
-    init_params : list of dict
-        List of dictionaries with blob initialization parameters
-        
-    Returns:
-    --------
-    params_to_infer : dict
-        Dictionary mapping parameter names to their default values
-    """
-    params_to_infer = {}
-    
-    for blob_idx, blob in enumerate(init_params):
-        # Extract position parameters
-        if blob['pos_type'] == 'gaussian':
-            params_to_infer[f"blob{blob_idx}_sigma"] = blob['pos_params']['sigma']
-            params_to_infer[f"blob{blob_idx}_center"] = blob['pos_params']['center']
-        elif blob['pos_type'] == 'nfw':
-            params_to_infer[f"blob{blob_idx}_rs"] = blob['pos_params']['rs']
-            params_to_infer[f"blob{blob_idx}_c"] = blob['pos_params']['c']
-            params_to_infer[f"blob{blob_idx}_center"] = blob['pos_params']['center']
-        elif blob['pos_type'] == 'plummer':
-            params_to_infer[f"blob{blob_idx}_rs"] = blob['pos_params']['rs']
-            params_to_infer[f"blob{blob_idx}_center"] = blob['pos_params']['center']
-        
-        # Extract velocity parameters
-        if blob['vel_type'] == 'cold':
-            params_to_infer[f"blob{blob_idx}_vel_dispersion"] = blob['vel_params'].get('vel_dispersion', 1e-6)
-        elif blob['vel_type'] == 'virial':
-            params_to_infer[f"blob{blob_idx}_virial_ratio"] = blob['vel_params'].get('virial_ratio', 1.0)
-        elif blob['vel_type'] == 'circular':
-            params_to_infer[f"blob{blob_idx}_vel_factor"] = blob['vel_params'].get('vel_factor', 1.0)
-    
-    return params_to_infer
-
-def run_hmc(log_posterior, initial_position, inv_mass_matrix, step_size, num_integration_steps, rng_key, num_samples, num_warmup=1000, progress_bar=False):
+def run_hmc(log_posterior, initial_position, inv_mass_matrix, step_size, num_integration_steps, rng_key, num_samples, num_warmup=1000):
     print(f"HMC parameters: step_size={step_size}, num_integration_steps={num_integration_steps}")
     print(f"Initial position: {initial_position}")
     print("\n" + "STARTING SAMPLING PHASE")
@@ -76,10 +27,10 @@ def run_hmc(log_posterior, initial_position, inv_mass_matrix, step_size, num_int
     initial_state = hmc.init(initial_position)
     
     if num_warmup > 0:
-        states = inference_loop(rng_key, hmc_kernel, initial_state, num_samples+num_warmup, progress_bar=progress_bar)
+        states = inference_loop(rng_key, hmc_kernel, initial_state, num_samples+num_warmup)
     
-    else :
-        states = inference_loop(rng_key, hmc_kernel, initial_state, num_samples, progress_bar=progress_bar)
+    else:
+        states = inference_loop(rng_key, hmc_kernel, initial_state, num_samples)
 
     sampling_end_time = time.time()
     sampling_duration = sampling_end_time - sampling_start_time
@@ -90,7 +41,7 @@ def run_hmc(log_posterior, initial_position, inv_mass_matrix, step_size, num_int
     
     return states.position
 
-def run_nuts(log_posterior, initial_position, rng_key, num_samples, num_warmup=1000, progress_bar=False):
+def run_nuts(log_posterior, initial_position, rng_key, num_samples, num_warmup=1000):
     print(f"Warmup steps: {num_warmup}")
     print(f"Sampling steps: {num_samples}")
     print(f"Initial position: {initial_position}")
@@ -110,7 +61,6 @@ def run_nuts(log_posterior, initial_position, rng_key, num_samples, num_warmup=1
     print(f"Warmup duration: {warmup_duration:.2f} seconds")
     print(f"Final step size: {parameters['step_size']:.6f}")
     print(f"Final inverse mass matrix diagonal: {jnp.diag(parameters['inverse_mass_matrix'])}")
-    #print(f"Final number of leapfrog steps: {parameters['num_leapfrog_steps']}")
     
     if hasattr(warmup_info, 'acceptance_rate'):
         print(f"Warmup acceptance rate: {warmup_info.acceptance_rate:.3f}")
@@ -119,7 +69,7 @@ def run_nuts(log_posterior, initial_position, rng_key, num_samples, num_warmup=1
     sampling_start_time = time.time()
     
     kernel = blackjax.nuts(log_posterior, **parameters).step
-    states = inference_loop(sample_key, kernel, state, num_samples, progress_bar=progress_bar)
+    states = inference_loop(sample_key, kernel, state, num_samples)
     
     sampling_end_time = time.time()
     sampling_duration = sampling_end_time - sampling_start_time
@@ -134,7 +84,7 @@ def run_nuts(log_posterior, initial_position, rng_key, num_samples, num_warmup=1
     return states.position
 
 
-def run_rwm(log_posterior, initial_position, step_size, rng_key, num_samples, progress_bar=False):
+def run_rwm(log_posterior, initial_position, step_size, rng_key, num_samples):
     """
     Run Random Walk Metropolis sampler with optional warmup phase.
     
@@ -150,8 +100,6 @@ def run_rwm(log_posterior, initial_position, step_size, rng_key, num_samples, pr
         Random key for sampling
     num_samples : int
         Number of samples to draw
-    progress_bar : bool
-        Whether to show progress bar
         
     Returns:
     --------
@@ -173,7 +121,7 @@ def run_rwm(log_posterior, initial_position, step_size, rng_key, num_samples, pr
     initial_state = rwm.init(initial_position)
     
     # Run sampling
-    states = inference_loop(sample_key, rwm_kernel, initial_state, num_samples, progress_bar=progress_bar)
+    states = inference_loop(sample_key, rwm_kernel, initial_state, num_samples)
     
     sampling_end_time = time.time()
     sampling_duration = sampling_end_time - sampling_start_time
@@ -186,7 +134,7 @@ def run_rwm(log_posterior, initial_position, step_size, rng_key, num_samples, pr
     return states.position
 
 def run_mala(log_posterior, initial_position, step_size, rng_key, num_samples, 
-             num_warmup=1000, progress_bar=False, autotuning=False):
+             num_warmup=1000, autotuning=False):
     """
     Run MALA sampler with optional warmup phase.
     
@@ -204,8 +152,6 @@ def run_mala(log_posterior, initial_position, step_size, rng_key, num_samples,
         Number of samples to draw
     num_warmup : int, optional
         Number of warmup steps for step size adaptation (default: 0, no warmup)
-    progress_bar : bool
-        Whether to show progress bar
     autotuning : bool, optional
         Whether to adapt step size during warmup (default: False)
         
@@ -250,13 +196,54 @@ def run_mala(log_posterior, initial_position, step_size, rng_key, num_samples,
 
     if num_warmup > 0:
 
-        states = inference_loop(sample_key, mala_kernel, initial_state, num_warmup + num_samples, progress_bar=progress_bar)      
+        states = inference_loop(sample_key, mala_kernel, initial_state, num_warmup + num_samples)      
     
-    else :
-        states = inference_loop(sample_key, mala_kernel, initial_state, num_samples, progress_bar=progress_bar)
+    else:
+        states = inference_loop(sample_key, mala_kernel, initial_state, num_samples)
 
     end_time = time.time()
     duration = end_time - start_time
     print("SAMPLING PHASE COMPLETED")
     print(f"Sampling duration: {duration:.2f} seconds")
     return states.position
+
+# utils
+
+def extract_params_to_infer(init_params):
+    """
+    Extract parameters to infer from initialization parameters.
+    
+    Parameters:
+    -----------
+    init_params : list of dict
+        List of dictionaries with blob initialization parameters
+        
+    Returns:
+    --------
+    params_to_infer : dict
+        Dictionary mapping parameter names to their default values
+    """
+    params_to_infer = {}
+    
+    for blob_idx, blob in enumerate(init_params):
+        # Extract position parameters
+        if blob['pos_type'] == 'gaussian':
+            params_to_infer[f"blob{blob_idx}_sigma"] = blob['pos_params']['sigma']
+            params_to_infer[f"blob{blob_idx}_center"] = blob['pos_params']['center']
+        elif blob['pos_type'] == 'nfw':
+            params_to_infer[f"blob{blob_idx}_rs"] = blob['pos_params']['rs']
+            params_to_infer[f"blob{blob_idx}_c"] = blob['pos_params']['c']
+            params_to_infer[f"blob{blob_idx}_center"] = blob['pos_params']['center']
+        elif blob['pos_type'] == 'plummer':
+            params_to_infer[f"blob{blob_idx}_rs"] = blob['pos_params']['rs']
+            params_to_infer[f"blob{blob_idx}_center"] = blob['pos_params']['center']
+        
+        # Extract velocity parameters
+        if blob['vel_type'] == 'cold':
+            params_to_infer[f"blob{blob_idx}_vel_dispersion"] = blob['vel_params'].get('vel_dispersion', 1e-6)
+        elif blob['vel_type'] == 'virial':
+            params_to_infer[f"blob{blob_idx}_virial_ratio"] = blob['vel_params'].get('virial_ratio', 1.0)
+        elif blob['vel_type'] == 'circular':
+            params_to_infer[f"blob{blob_idx}_vel_factor"] = blob['vel_params'].get('vel_factor', 1.0)
+    
+    return params_to_infer

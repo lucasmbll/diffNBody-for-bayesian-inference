@@ -1,33 +1,60 @@
 # run_experiment.py
 
 import os
-#os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "1.0" # Set memory fraction to 100% for JAX
+#os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "1.0" # Set memory fraction for JAX
 
 import yaml
-import datetime  # Added for date-time based directory naming
-
-# --- Set CUDA device before importing JAX ---
-def set_cuda_device_from_config(config_path):
-    with open(config_path, "r") as f:
-        config = yaml.safe_load(f)
-    cuda_num = config.get("cuda_visible_devices", None)
-    if cuda_num is not None:
-        os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(cuda_num)
-        print(f"CUDA device set to: {cuda_num}")
-
+import datetime 
 import argparse
-import jax
 import shutil
-import jax.numpy as jnp
 import numpy as np
-import pickle
+from typing import List
 
-from model import model 
+# GPU configuration 
+def check_mpi_mode():
+    try:
+        from mpi4py import MPI
+        comm = MPI.COMM_WORLD
+        if comm.Get_size() > 1:
+            return True, comm, comm.Get_rank(), comm.Get_size()
+    except ImportError:
+        pass
+    return False, 0, 1
 
+def setup_mpi_gpu_assignment(gpu_devices: List[int], rank: int):
+    assigned_gpu = gpu_devices[rank]
+    print(f"Process {rank} assigned GPU {assigned_gpu} from list {gpu_devices}")
+    os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+    os.environ['CUDA_VISIBLE_DEVICES'] = str(assigned_gpu)
+    return assigned_gpu
+
+def gpu_config(config):
+    use_mpi, comm, rank, size = check_mpi_mode()
+    if use_mpi and config.get("num_chains", 1) > 1:
+        gpu_devices = config.get("mpi_gpu_devices", None)
+        if gpu_devices is not None:
+            setup_mpi_gpu_assignment(gpu_devices, rank)
+        else:
+            raise ValueError("MPI mode requires 'mpi_gpu_devices' to be specified in the configuration file.")
+    else:
+        cuda_num = config.get("cuda_visible_devices", None)
+        if cuda_num is not None:
+            os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+            os.environ["CUDA_VISIBLE_DEVICES"] = str(cuda_num)
+            print(f"CUDA device set to: {cuda_num}")
+    return use_mpi, rank, size, comm
+        
+# Main function to run the experiment
 def main(config_path):
+
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
+    
+    use_mpi, rank, size, comm = gpu_config(config)
+
+    import jax
+    import jax.numpy as jnp
+    from model import model 
 
     mode = config.get("mode")
     if mode is None:
@@ -47,8 +74,7 @@ def main(config_path):
     # --- Model parameters ---
     model_params = config["model_params"]
     model_fn = model 
-        
-    # Extract common parameters
+
     G = model_params.get("G", 5.0)
     length = model_params.get("length", 64)
     softening = model_params.get("softening", 0.1)
@@ -57,16 +83,12 @@ def main(config_path):
     m_part = model_params.get("m_part", 1.0)
     solver = model_params.get("solver", "LeapfrogMidpoint") 
 
-
-    # Random seed for data generation
-    data_seed = model_params.get("data_seed", 0)
+    data_seed = model_params.get("data_seed", 0) # Random seed for data generation
     data_key = jax.random.PRNGKey(data_seed)
     
-    # Density scaling parameters
     density_scaling = model_params.get("density_scaling", "none")
     scaling_kwargs = model_params.get("scaling_kwargs", {})
     
-    # Extract blobs parameters
     blobs_params = model_params.get("blobs_params", [])
     if not blobs_params:
         raise ValueError("Blob parameters 'blobs_params' must be specified in the configuration file.")
@@ -74,7 +96,7 @@ def main(config_path):
     n_part = sum(blob['n_part'] for blob in blobs_params)
     total_mass = sum(blob['n_part'] * blob.get('m_part', 1.0) for blob in blobs_params)
 
-    # Run model to generate mock data
+    # Run model for simulation (sim mode) or mock data generation (sampling mode)
     result = model_fn(
         blobs_params,
         G=G,
@@ -88,13 +110,7 @@ def main(config_path):
         **scaling_kwargs
     )
     
-    # Unpack results (now includes masses)
-    if len(result) == 6:
-        input_field, init_pos, final_pos, output_field, sol, masses = result
-    else:
-        # Backward compatibility
-        input_field, init_pos, final_pos, output_field, sol = result
-        masses = jnp.ones(n_part)  # Default unit masses
+    input_field, init_pos, final_pos, output_field, sol, masses = result
     
     if mode == "sim":
         print(f"Simulation completed.")
@@ -105,7 +121,7 @@ def main(config_path):
     if density_scaling != "none":
         print(f"Density scaling applied: {density_scaling} with parameters: {scaling_kwargs}")
 
-    data = output_field  # This is the mock data we will use for inference
+    data = output_field  # This is the mock data we will use for inference (sampling mode)
 
     # --- Plots and video ---
     plot_settings = config.get("plot_settings", {})
@@ -193,9 +209,7 @@ def main(config_path):
                     energy_data=energy_data)
         print("Simulation video saved successfully")
         
-    # Save init_params for reference
-    # Save a copy of the config file in the result directory
-    shutil.copy(config_path, os.path.join(base_dir, "config.yaml"))
+    shutil.copy(config_path, os.path.join(base_dir, "config.yaml")) # Save a copy of the config file in the result directory
     
     if mode == "sim":
         print("Simulation completed.")
@@ -203,10 +217,11 @@ def main(config_path):
 
     # --- SAMPLING ---
     from likelihood import get_log_posterior
-    from sampling import extract_params_to_infer
+    #from sampling import extract_params_to_infer
     from utils import extract_true_values_from_blobs
 
     print('Starting sampling process...')
+    
     # Prior
     prior_type = config.get("prior_type", None)
     prior_params = config.get("prior_params", None)
@@ -243,99 +258,114 @@ def main(config_path):
     )
 
     # Sampling initialization
+    num_chains = config.get("num_chains", 1)
     initial_position = config.get("initial_position", None)
     if initial_position is None:
         raise ValueError("No initial position specified in config file. Please provide 'initial_position' in your configuration.")
     rng_key = jax.random.PRNGKey(config.get("sampling_seed", 12345))
     num_samples = config.get("num_samples", 1000)
-    progress_bar = config.get("progress_bar", False)
-
-    # Sanity check
-    print("="*50)
-    print("PARAMETER SAMPLING VERIFICATION")
-    print("="*50)
-    all_possible_params = extract_params_to_infer(blobs_params)
-    print(f"All possible parameters: {list(all_possible_params.keys())}")
-    print(f"Parameters with priors: {list(prior_params.keys())}")
-    print(f"Parameters being sampled: {list(initial_position.keys())}")
-    print(f"Fixed parameters: {set(all_possible_params.keys()) - set(initial_position.keys())}")
 
     # Run the sampler
-    if config["sampler"] == "hmc":
-        from sampling import run_hmc
-        print("Running HMC sampler...")
-        inv_mass_matrix = np.array(config["inv_mass_matrix"])
-        step_size = config.get("step_size", 1e-3)
-        num_integration_steps = config.get("num_integration_steps", 50)
-        num_warmup = config.get("num_warmup", 1000)
-        samples = run_hmc(
-            log_posterior,
-            initial_position,
-            inv_mass_matrix,
-            step_size,
-            num_integration_steps,
-            rng_key,
-            num_samples,
-            num_warmup,  
-            progress_bar
+    if use_mpi and num_chains > 1:
+        from sampling_mpi import run_mpi_sampling
+        samples, rhat_values = run_mpi_sampling(
+            config["sampler"], log_posterior, rank, size, comm, config, base_dir, rng_key
         )
-
-    elif config["sampler"] == "nuts":
-        print("Running NUTS sampler...")
-        from sampling import run_nuts
-        num_warmup = config.get("num_warmup", 1000)
-        samples = run_nuts(
-            log_posterior,
-            initial_position,
-            rng_key,
-            num_samples,
-            num_warmup,
-            progress_bar=progress_bar  
-        )
-    
-    elif config["sampler"] == "rwm":
-        print("Running Random Walk Metropolis sampler...")
-        from sampling import run_rwm
-        step_size = config.get("step_size", 0.1)
-        samples = run_rwm(
-            log_posterior,
-            initial_position,
-            step_size,
-            rng_key,
-            num_samples,
-            progress_bar=progress_bar
-        )
-    
-    elif config["sampler"] == "mala":
-        print("Running MALA sampler...")
-        from sampling import run_mala
-        step_size = config.get("step_size", 0.01)
-        num_warmup = config.get("num_warmup", 0)  
-        autotuning = config.get("autotuning", False)
-        samples = run_mala(
-            log_posterior,
-            initial_position,
-            step_size,
-            rng_key,
-            num_samples,
-            num_warmup=num_warmup,  
-            autotuning=autotuning,
-            progress_bar=progress_bar
-        )
-    
+        
+        # Only root process continues with post-processing
+        if rank != 0:
+            return
+            
+        # Restore stdout for root process
+        import sys
+        sys.stdout = sys.__stdout__
+        
+        # samples is already in the right format for plotting
+        samples_dict = samples
+        
+        # Load chain-separated samples for trace plots
+        chain_samples_file = os.path.join(base_dir, "samples_by_chain.npz")
+        chain_samples = None
+        if os.path.exists(chain_samples_file):
+            chain_data = np.load(chain_samples_file)
+            chain_samples = {key: chain_data[key] for key in chain_data.files}
+            print(f"Loaded chain-separated samples: {list(chain_samples.keys())}")
+        
     else:
-        raise ValueError("Unknown sampler: should be 'hmc', 'nuts', 'rwm', or 'mala'")
+        # Single-process execution or single chain
+        chain_samples = None  # No chain separation for single process
+        
+        if config["sampler"] == "hmc":
+            from sampling import run_hmc
+            print("Running HMC sampler...")
+            inv_mass_matrix = np.array(config["inv_mass_matrix"])
+            step_size = config.get("step_size", 1e-3)
+            num_integration_steps = config.get("num_integration_steps", 50)
+            num_warmup = config.get("num_warmup", 1000)
+            samples = run_hmc(
+                log_posterior,
+                initial_position,
+                inv_mass_matrix,
+                step_size,
+                num_integration_steps,
+                rng_key,
+                num_samples,
+                num_warmup
+            )
+
+        elif config["sampler"] == "nuts":
+            print("Running NUTS sampler...")
+            from sampling import run_nuts
+            num_warmup = config.get("num_warmup", 1000)
+            samples = run_nuts(
+                log_posterior,
+                initial_position,
+                rng_key,
+                num_samples,
+                num_warmup
+            )
+
+        elif config["sampler"] == "rwm":
+            print("Running Random Walk Metropolis sampler...")
+            from sampling import run_rwm
+            step_size = config.get("step_size", 0.1)
+            samples = run_rwm(
+                log_posterior,
+                initial_position,
+                step_size,
+                rng_key,
+                num_samples
+            )
+
+        elif config["sampler"] == "mala":
+            print("Running MALA sampler...")
+            from sampling import run_mala
+            step_size = config.get("step_size", 0.01)
+            num_warmup = config.get("num_warmup", 0)  
+            autotuning = config.get("autotuning", False)
+            samples = run_mala(
+                log_posterior,
+                initial_position,
+                step_size,
+                rng_key,
+                num_samples,
+                num_warmup=num_warmup,  
+                autotuning=autotuning
+            )
+
+        else:
+            raise ValueError("Unknown sampler: should be 'hmc', 'nuts', 'rwm', or 'mala'")
+        
+        samples_dict = {}
+        for key, value in samples.items():
+            if isinstance(value, list) and all(hasattr(v, 'ndim') for v in value):
+                # Stack list of arrays into a single 2D array
+                samples_dict[key] = jnp.stack(value, axis=1)
+            else:
+                # Keep as is for scalar parameters
+                samples_dict[key] = value
     
     print("Sampling finished.")
-    
-    samples_dict = {}
-    for key, value in samples.items():
-        if isinstance(value, list) and all(hasattr(v, 'ndim') for v in value):
-            # Stack list of arrays into a single 2D array
-            samples_dict[key] = jnp.stack(value, axis=1)
-        else:
-            # Keep as is for scalar parameters
-            samples_dict[key] = value
     
     np.savez(os.path.join(base_dir, "samples.npz"), **{k: np.array(v) for k, v in samples_dict.items()})
     print(f"Results saved to {os.path.join(base_dir, 'samples.npz')}")   
@@ -375,7 +405,8 @@ def main(config_path):
         theta=theta,
         G=G, t_f=t_f, dt=dt, softening=softening, length=length, n_part=n_part,
         method=config["sampler"],
-        param_order=param_order
+        param_order=param_order,
+        chain_samples=chain_samples  # Pass chain samples for individual trace plots
     )
     existing_suptitle = fig._suptitle.get_text() if fig._suptitle else "Trace Plot"
     new_suptitle = existing_suptitle + "\n" + "\n".join(lines)
@@ -390,17 +421,18 @@ def main(config_path):
         G=G, t_f=t_f, dt=dt, softening=softening, length=length, n_part=n_part,
         method=config["sampler"],
         param_order=param_order,
-        burnin=burnin
+        burnin=burnin,
+        chain_samples=chain_samples  # Pass for title information only
     )
     existing_suptitle = fig._suptitle.get_text() if fig._suptitle else "Corner Plot"
     new_suptitle = existing_suptitle + "\n" + "\n".join(lines)
     fig.suptitle(new_suptitle, fontsize=10)
     fig.savefig(os.path.join(base_dir, "corner_sampling.png"))
     print("Corner plot saved.")
+
     
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run MCMC sampling for N-body initial distribution parameters inference")
     parser.add_argument("--config", type=str, required=True, help="Path to YAML config file")
     args = parser.parse_args()
-    set_cuda_device_from_config(args.config)
     main(args.config)

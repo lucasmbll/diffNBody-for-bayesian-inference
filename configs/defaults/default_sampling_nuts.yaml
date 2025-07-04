@@ -3,7 +3,7 @@
 # Use with : python src/run_experiments.py --config configs/default_sampling_nuts.yaml
 
 # --- HARDWARE/CLUSTER SETTINGS ---
-cuda_visible_devices: 1  # GPU index to use
+cuda_visible_devices: '1,2,3'  # GPU index to use
 
 # --- EXPERIMENT MODE and MISCELLANEOUS ---
 mode: sampling      # Experiment mode (options: "sim", "sampling")
@@ -76,7 +76,7 @@ prior_params:
 sampler: nuts           # No-U-Turn Sampler (NUTS)
 num_samples: 2000        # Number of MCMC samples to draw
 sampling_seed: 12345    # Random seed for reproducibility
-progress_bar: false  # Show progress bar during sampling
+num_chains: 4          # Number of independent chains to run
 
 # NUTS-specific parameters:
 num_warmup: 500         # Number of warmup steps for adaptation
@@ -96,7 +96,18 @@ num_warmup: 500         # Number of warmup steps for adaptation
 
 
 # Initial position for the sampler - start with values different from the true ones
+# Option 1: Single initial position (will be automatically perturbed for multiple chains)
 initial_position: 
-  blob0_sigma: 10.0          # Starting guess for sigma
-  blob0_center: [32.0, 32.0, 32.0]  # Starting guess for center
-  #blob0_vel_factor: 0.3     # Starting guess for velocity factor
+  blob0_sigma: 10.0
+  blob0_center: [32.0, 32.0, 32.0]
+
+# Option 2: Specific initial position for each chain
+# initial_position:
+#   - blob0_sigma: 8.0
+#     blob0_center: [30.0, 30.0, 30.0]
+#   - blob0_sigma: 12.0
+#     blob0_center: [34.0, 34.0, 34.0]
+#   - blob0_sigma: 9.0
+#     blob0_center: [31.0, 33.0, 29.0]
+#   - blob0_sigma: 11.0
+#     blob0_center: [35.0, 29.0, 35.0]

@@ -77,7 +77,6 @@ sampler: mala           # Metropolis-Adjusted Langevin Algorithm
 num_samples: 2000       # Number of MCMC samples to draw
 sampling_seed: 12345    # Random seed for reproducibility
 num_warmup: 1000
-progress_bar: false      # Show progress bar during sampling
 
 # MALA-specific parameters:
 # Option 1: Single step size for all parameters (current setting)

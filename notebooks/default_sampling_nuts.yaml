@@ -1,6 +1,6 @@
-# Configuration for N-body parameter inference using blobs model with Random Walk Metropolis (RWM)
+# Configuration for N-body parameter inference using blobs model
 
-# Use with : python src/run_experiments.py --config configs/default_sampling_rwm.yaml
+# Use with : python src/run_experiments.py --config configs/default_sampling_nuts.yaml
 
 # --- HARDWARE/CLUSTER SETTINGS ---
 cuda_visible_devices: 1  # GPU index to use
@@ -55,7 +55,7 @@ model_params:
         center: [32.0, 32.0, 32.0]  
       vel_type: circular
       vel_params:
-        vel_factor: 0.5 
+        vel_factor: 0.5  
         distrib: False
 
 # --- LIKELIHOOD SETTINGS ---
@@ -73,27 +73,52 @@ prior_params:
   #blob0_vel_factor: {mu: 0.3, sigma: 0.3} #REMOVE A PRIOR TO NOT SAMPLE A PARAM
 
 # --- SAMPLER SETTINGS ---
-sampler: rwm            # Random Walk Metropolis sampler
-num_samples: 2000       # Number of MCMC samples to draw``
-num_warmup: 1000
+sampler: nuts           # No-U-Turn Sampler (NUTS)
+num_samples: 2000        # Number of MCMC samples to draw
 sampling_seed: 12345    # Random seed for reproducibility
+num_chains: 4          # Number of independent chains to run
 
-# RWM-specific parameters:
-# Option 1: Single step size for all parameters
-step_size: 0.1          # Single step size applied to all parameters
+# NUTS-specific parameters:
+num_warmup: 500         # Number of warmup steps for adaptation
 
-# Option 2: Parameter-specific step sizes (uncomment to use)
-# step_size:
-#   blob0_sigma: 0.5
-#   blob0_center: [1.0, 1.0, 1.0]  # Can specify per-dimension for vector parameters
-#   blob0_vel_factor: 0.05
+# Option 1: Let NUTS auto-adapt during warmup (recommended)
+# No additional parameters needed - step_size and mass matrix will be adapted
 
-# Option 3: Adaptive step sizes (if implemented)
-# adaptive_step_size: true
-# target_acceptance_rate: 0.234  # Optimal for RWM in high dimensions
+# Option 2: Manual initial step size (will still be adapted)
+# initial_step_size: 0.01
+
+# Option 3: Custom adaptation settings
+# max_treedepth: 10           # Maximum tree depth (default: 10)
+# target_accept_stat: 0.8     # Target acceptance probability (default: 0.8)
+
+# Option 4: Custom mass matrix initialization
+# initial_mass_matrix: "identity"  # Options: "identity", "diagonal", or custom matrix
+
 
 # Initial position for the sampler - start with values different from the true ones
+# Option 1: Single initial position (will be automatically perturbed for multiple chains)
 initial_position: 
-  blob0_sigma: 10.0          # Starting guess for sigma
-  blob0_center: [32.0, 32.0, 32.0]  # Starting guess for center
-  #blob0_vel_factor: 0.3     # Starting guess for velocity factor
+  - blob0_sigma: 8.0
+    blob0_center: [30.0, 30.0, 30.0]
+    blob1_sigma: 8.0
+    blob1_center: [30.0, 30.0, 30.0]
+    blob2_sigma: 8.0
+    blob2_center: [30.0, 30.0, 30.0]
+  - blob0_sigma: 8.0
+    blob0_center: [30.0, 30.0, 30.0]
+    blob1_sigma: 8.0
+    blob1_center: [30.0, 30.0, 30.0]
+    blob2_sigma: 8.0
+    blob2_center: [30.0, 30.0, 30.0]
+  - blob0_sigma: 8.0
+    blob0_center: [30.0, 30.0, 30.0]
+    blob1_sigma: 8.0
+    blob1_center: [30.0, 30.0, 30.0]
+    blob2_sigma: 8.0
+    blob2_center: [30.0, 30.0, 30.0]
+  - blob0_sigma: 8.0
+    blob0_center: [30.0, 30.0, 30.0]
+    blob1_sigma: 8.0
+    blob1_center: [30.0, 30.0, 30.0]
+    blob2_sigma: 8.0
+    blob2_center: [30.0, 30.0, 30.0]

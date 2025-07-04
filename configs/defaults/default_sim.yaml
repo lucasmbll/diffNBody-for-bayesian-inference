@@ -90,3 +90,46 @@ model_params:
           vel_factor: 1.0
           distrib: true  # Use distribution-specific circular velocities
 
+# --- SAMPLING CONFIGURATION (only used when mode: sampling) ---
+sampler: "nuts"           # Sampler type: "nuts", "hmc", "rwm", "mala"
+num_chains: 4             # Total number of chains across all MPI processes
+num_samples: 1000         # Samples per chain
+num_warmup: 1000          # Warmup samples per chain
+sampling_seed: 12345      # Random seed for sampling
+
+# MPI configuration
+mpi_gpu_devices: [0, 1, 2, 3]  # List of GPU devices to use, or "0,1,2,3"
+rhat_check_interval: 100       # Check R-hat every N samples
+
+# Initial positions for sampling
+initial_position:
+  blob0_sigma: 8.0
+  blob0_center: [32.0, 32.0, 32.0]
+  blob1_rs: 5.0
+  blob1_c: 2.0
+  blob1_center: [32.0, 32.0, 32.0]
+
+# Prior configuration
+prior_type: "blob_gaussian"
+prior_params:
+  blob0_sigma:
+    mu: 8.0
+    sigma: 2.0
+  blob0_center:
+    mu: [32.0, 32.0, 32.0]
+    sigma: 5.0
+  blob1_rs:
+    mu: 5.0
+    sigma: 1.0
+  blob1_c:
+    mu: 2.0
+    sigma: 0.5
+  blob1_center:
+    mu: [32.0, 32.0, 32.0]
+    sigma: 5.0
+
+# Likelihood configuration
+likelihood_type: "ll1"
+likelihood_kwargs:
+  noise: 0.1
+

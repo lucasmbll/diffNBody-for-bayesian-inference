@@ -1043,20 +1043,25 @@ def create_video(
 
 ### Plotting functions for sampling experiments
 
-def plot_trace_subplots(mcmc_samples, theta, G, t_f, dt, softening, length, n_part, method, param_order, save_path=None):
+def plot_trace_subplots(mcmc_samples, theta, G, t_f, dt, softening, length, n_part, method, param_order, save_path=None, chain_samples=None):
     """
     Plot trace plots for MCMC samples with blob parameters.
     Vector parameters are plotted with separate subplots for each component.
     Scalar parameters each get their own subplot.
+    
+    If chain_samples is provided, plots individual chains separately.
+    Otherwise, plots the flattened samples.
 
     Parameters:
     -----------
     mcmc_samples : dict
-        Dictionary with parameter names as keys and sample arrays as values
+        Dictionary with parameter names as keys and sample arrays as values (flattened)
     theta : dict
         Dictionary with true parameter values
     param_order : tuple
         Tuple of parameter names to plot
+    chain_samples : dict, optional
+        Dictionary with chain-separated samples (n_chains, n_samples, ...)
     """
     title = 'Sampling of the model parameters with ' + method
     param_info = f'G={G}, tf={t_f}, dt={dt}, L={length}, N={n_part}, softening={softening}'
@@ -1080,45 +1085,102 @@ def plot_trace_subplots(mcmc_samples, theta, G, t_f, dt, softening, length, n_pa
 
     fig, axes = plt.subplots(n_subplots, 1, figsize=(12, 3 * n_subplots), squeeze=False)
     axes = axes.flatten()
+    
+    # Add chain information to title if available
+    if chain_samples is not None:
+        n_chains = len(next(iter(chain_samples.values())))
+        title += f' ({n_chains} chains)'
+    
     plt.suptitle(f"{title}\n{param_info}", fontsize=14)
     plt.subplots_adjust(top=0.92)
 
     for idx, (param_name, comp_idx) in enumerate(subplot_info):
-        samples = mcmc_samples[param_name]
         ax = axes[idx]
-        if comp_idx is not None:
-            # Vector component
-            ax.plot(samples[:, comp_idx], color=plt.cm.tab10(comp_idx), label=f'{param_name}[{comp_idx}]', alpha=0.8)
-            # Add true value line if available
-            if param_name in theta:
-                true_val = theta[param_name]
-                if isinstance(true_val, (list, tuple, np.ndarray)):
-                    true_val = np.array(true_val)
-                    if comp_idx < len(true_val):
-                        ax.axhline(true_val[comp_idx], color='red', linestyle='--',
-                                   label=f'True {param_name}[{comp_idx}] = {true_val[comp_idx]:.2f}')
-            ax.set_ylabel(f'{param_name}[{comp_idx}]')
-            ax.legend()
+        
+        if chain_samples is not None:
+            # Plot individual chains
+            chain_data = chain_samples[param_name]
+            n_chains = chain_data.shape[0]
+            colors = plt.cm.tab10(np.linspace(0, 1, n_chains))
+            
+            if comp_idx is not None:
+                # Vector component
+                for chain_idx in range(n_chains):
+                    chain_samples_comp = chain_data[chain_idx, :, comp_idx]
+                    ax.plot(chain_samples_comp, color=colors[chain_idx], 
+                           label=f'Chain {chain_idx}', alpha=0.7, linewidth=1)
+                
+                # Add true value line if available
+                if param_name in theta:
+                    true_val = theta[param_name]
+                    if isinstance(true_val, (list, tuple, np.ndarray)):
+                        true_val = np.array(true_val)
+                        if comp_idx < len(true_val):
+                            ax.axhline(true_val[comp_idx], color='red', linestyle='--', linewidth=2,
+                                     label=f'True {param_name}[{comp_idx}] = {true_val[comp_idx]:.2f}')
+                ax.set_ylabel(f'{param_name}[{comp_idx}]')
+            else:
+                # Scalar parameter
+                for chain_idx in range(n_chains):
+                    chain_samples_scalar = chain_data[chain_idx, :]
+                    ax.plot(chain_samples_scalar, color=colors[chain_idx], 
+                           label=f'Chain {chain_idx}', alpha=0.7, linewidth=1)
+                
+                if param_name in theta:
+                    true_val = theta[param_name]
+                    if not isinstance(true_val, (list, tuple, np.ndarray)):
+                        ax.axhline(true_val, color='red', linestyle='--', linewidth=2,
+                                 label=f'True {param_name} = {true_val:.2f}')
+                ax.set_ylabel(param_name)
+            
+            ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
         else:
-            # Scalar parameter
-            ax.plot(samples, label=param_name)
-            if param_name in theta:
-                true_val = theta[param_name]
-                if not isinstance(true_val, (list, tuple, np.ndarray)):
-                    ax.axhline(true_val, color='red', linestyle='--', label=f'True {param_name} = {true_val:.2f}')
-            ax.set_ylabel(param_name)
-            ax.legend()
+            # Plot flattened samples (original behavior)
+            samples = mcmc_samples[param_name]
+            if comp_idx is not None:
+                # Vector component
+                ax.plot(samples[:, comp_idx], color=plt.cm.tab10(comp_idx), 
+                       label=f'{param_name}[{comp_idx}]', alpha=0.8)
+                # Add true value line if available
+                if param_name in theta:
+                    true_val = theta[param_name]
+                    if isinstance(true_val, (list, tuple, np.ndarray)):
+                        true_val = np.array(true_val)
+                        if comp_idx < len(true_val):
+                            ax.axhline(true_val[comp_idx], color='red', linestyle='--',
+                                     label=f'True {param_name}[{comp_idx}] = {true_val[comp_idx]:.2f}')
+                ax.set_ylabel(f'{param_name}[{comp_idx}]')
+                ax.legend()
+            else:
+                # Scalar parameter
+                ax.plot(samples, label=param_name)
+                if param_name in theta:
+                    true_val = theta[param_name]
+                    if not isinstance(true_val, (list, tuple, np.ndarray)):
+                        ax.axhline(true_val, color='red', linestyle='--', 
+                                 label=f'True {param_name} = {true_val:.2f}')
+                ax.set_ylabel(param_name)
+                ax.legend()
+        
         ax.grid(True)
 
     axes[-1].set_xlabel('Sample')
     plt.tight_layout()
     if save_path:
-        fig.savefig(save_path)
+        fig.savefig(save_path, bbox_inches='tight')
     return fig, axes
 
-def plot_corner_after_burnin(mcmc_samples, theta, G, t_f, dt, softening, length, n_part, method, param_order, burnin=0, save_path=None):
+def plot_corner_after_burnin(mcmc_samples, theta, G, t_f, dt, softening, length, n_part, method, param_order, burnin=0, save_path=None, chain_samples=None):
     """
     Plot corner plot for MCMC samples with blob parameters.
+    Uses all samples (flattened across chains) for the corner plot.
+    
+    Parameters:
+    -----------
+    mcmc_samples : dict
+        Dictionary with flattened samples across all chains
+    chain_samples : dict, optional
+        Dictionary with chain-separated samples (not used for corner plot, but affects title)
     """    
     # Prepare data for corner plot
     samples_list = []
@@ -1127,6 +1189,13 @@ def plot_corner_after_burnin(mcmc_samples, theta, G, t_f, dt, softening, length,
     
     title = "Posterior distribution of initial distribution's parameters with " + method.upper()
     param_info = f'G={G}, tf={t_f}, dt={dt}, L={length}, N={n_part}, softening={softening}'
+    
+    # Add chain information to title if available
+    if chain_samples is not None:
+        n_chains = len(next(iter(chain_samples.values())))
+        n_samples_per_chain = next(iter(chain_samples.values())).shape[1]
+        title += f' ({n_chains} chains, {n_samples_per_chain} samples each)'
+    
     title = f"{title}\n{param_info}"
     
     for param_name in param_order:
@@ -1178,7 +1247,7 @@ def plot_corner_after_burnin(mcmc_samples, theta, G, t_f, dt, softening, length,
     fig.subplots_adjust(top=0.90)  # Adjust for the suptitle
 
     if save_path:
-        fig.savefig(save_path)
+        fig.savefig(save_path, bbox_inches='tight')
     
     return fig
 
