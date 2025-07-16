@@ -5,6 +5,7 @@ import jax.numpy as jnp
 import blackjax
 import numpy as np
 import time
+from functools import partial
 
 def inference_loop(rng_key, kernel, initial_state, num_samples):
     @jax.jit
@@ -14,73 +15,43 @@ def inference_loop(rng_key, kernel, initial_state, num_samples):
     keys = jax.random.split(rng_key, num_samples)
     _, states = jax.lax.scan(one_step, initial_state, keys)
     return states
-    
 
-def run_hmc(log_posterior, initial_position, inv_mass_matrix, step_size, num_integration_steps, rng_key, num_samples, num_warmup=1000):
-    print(f"HMC parameters: step_size={step_size}, num_integration_steps={num_integration_steps}")
-    print(f"Initial position: {initial_position}")
-    print("\n" + "STARTING SAMPLING PHASE")
-    sampling_start_time = time.time()
+def warmup(log_posterior, initial_position, warmup_key, num_warmup):
+    warmup = blackjax.window_adaptation(blackjax.nuts, log_posterior)
+    (state, parameters), warmup_info = warmup.run(warmup_key, initial_position, num_steps=num_warmup)
+    return state, parameters, warmup_info
 
+def run_hmc(log_posterior, initial_position, inv_mass_matrix, step_size, num_integration_steps, rng_key, num_samples, num_warmup):
     hmc = blackjax.hmc(log_posterior, step_size, inv_mass_matrix, num_integration_steps)
     hmc_kernel = jax.jit(hmc.step)
     initial_state = hmc.init(initial_position)
-    
-    if num_warmup > 0:
-        states = inference_loop(rng_key, hmc_kernel, initial_state, num_samples+num_warmup)
-    
-    else:
-        states = inference_loop(rng_key, hmc_kernel, initial_state, num_samples)
-
-    sampling_end_time = time.time()
-    sampling_duration = sampling_end_time - sampling_start_time
-    print("SAMPLING PHASE COMPLETED")
-    print(f"Sampling duration: {sampling_duration:.2f} seconds")
-    print(f"Average time per sample: {sampling_duration/num_samples:.4f} seconds")
-    print(f"Samples per second: {num_samples/sampling_duration:.2f}")
-    
+    states = inference_loop(rng_key, hmc_kernel, initial_state, num_samples+num_warmup)
     return states.position
 
-def run_nuts(log_posterior, initial_position, rng_key, num_samples, num_warmup=1000):
-    print(f"Warmup steps: {num_warmup}")
-    print(f"Sampling steps: {num_samples}")
-    print(f"Initial position: {initial_position}")
-    
-    warmup = blackjax.window_adaptation(blackjax.nuts, log_posterior)
+def run_nuts(log_posterior, initial_position, rng_key, num_samples, num_warmup):
     rng_key, warmup_key, sample_key = jax.random.split(rng_key, 3)
-    
     print("\n" + "STARTING WARMUP PHASE")
     warmup_start_time = time.time()
-    
-    (state, parameters), warmup_info = warmup.run(warmup_key, initial_position, num_steps=num_warmup)
-    
+    state, parameters, warmup_info = warmup(log_posterior, initial_position, warmup_key, num_warmup)
     warmup_end_time = time.time()
     warmup_duration = warmup_end_time - warmup_start_time
-    
     print("WARMUP PHASE COMPLETED")
     print(f"Warmup duration: {warmup_duration:.2f} seconds")
-    print(f"Final step size: {parameters['step_size']:.6f}")
-    print(f"Final inverse mass matrix diagonal: {jnp.diag(parameters['inverse_mass_matrix'])}")
-    
-    if hasattr(warmup_info, 'acceptance_rate'):
-        print(f"Warmup acceptance rate: {warmup_info.acceptance_rate:.3f}")
-
+    print(f"Final NUTS params: {parameters}")
+    print(f"Warmup info: {warmup_info}")
+    print(f"Final state: {state}")
     print("\n" + "STARTING SAMPLING PHASE")
     sampling_start_time = time.time()
-    
     kernel = blackjax.nuts(log_posterior, **parameters).step
     states = inference_loop(sample_key, kernel, state, num_samples)
-    
     sampling_end_time = time.time()
     sampling_duration = sampling_end_time - sampling_start_time
     total_duration = warmup_duration + sampling_duration
-    
     print("SAMPLING PHASE COMPLETED")
     print(f"Sampling duration: {sampling_duration:.2f} seconds")
     print(f"Total duration: {total_duration:.2f} seconds")
     print(f"Average time per sample: {sampling_duration/num_samples:.4f} seconds")
-    print(f"Samples per second: {num_samples/sampling_duration:.2f}")
-    
+    print(f"Samples per second: {num_samples/sampling_duration:.2f}")  
     return states.position
 
 
@@ -207,43 +178,4 @@ def run_mala(log_posterior, initial_position, step_size, rng_key, num_samples,
     print(f"Sampling duration: {duration:.2f} seconds")
     return states.position
 
-# utils
 
-def extract_params_to_infer(init_params):
-    """
-    Extract parameters to infer from initialization parameters.
-    
-    Parameters:
-    -----------
-    init_params : list of dict
-        List of dictionaries with blob initialization parameters
-        
-    Returns:
-    --------
-    params_to_infer : dict
-        Dictionary mapping parameter names to their default values
-    """
-    params_to_infer = {}
-    
-    for blob_idx, blob in enumerate(init_params):
-        # Extract position parameters
-        if blob['pos_type'] == 'gaussian':
-            params_to_infer[f"blob{blob_idx}_sigma"] = blob['pos_params']['sigma']
-            params_to_infer[f"blob{blob_idx}_center"] = blob['pos_params']['center']
-        elif blob['pos_type'] == 'nfw':
-            params_to_infer[f"blob{blob_idx}_rs"] = blob['pos_params']['rs']
-            params_to_infer[f"blob{blob_idx}_c"] = blob['pos_params']['c']
-            params_to_infer[f"blob{blob_idx}_center"] = blob['pos_params']['center']
-        elif blob['pos_type'] == 'plummer':
-            params_to_infer[f"blob{blob_idx}_rs"] = blob['pos_params']['rs']
-            params_to_infer[f"blob{blob_idx}_center"] = blob['pos_params']['center']
-        
-        # Extract velocity parameters
-        if blob['vel_type'] == 'cold':
-            params_to_infer[f"blob{blob_idx}_vel_dispersion"] = blob['vel_params'].get('vel_dispersion', 1e-6)
-        elif blob['vel_type'] == 'virial':
-            params_to_infer[f"blob{blob_idx}_virial_ratio"] = blob['vel_params'].get('virial_ratio', 1.0)
-        elif blob['vel_type'] == 'circular':
-            params_to_infer[f"blob{blob_idx}_vel_factor"] = blob['vel_params'].get('vel_factor', 1.0)
-    
-    return params_to_infer

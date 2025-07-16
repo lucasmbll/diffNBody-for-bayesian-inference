@@ -1,97 +1,36 @@
 # utils.py
 
+import jax
 import jax.numpy as jnp
 from jax.scipy.special import erf
 import numpy as np
-
-def calculate_energy(pos, vel, G, length, softening, m_part):
-    """Calculate kinetic, potential, and total energy of the system"""
-    n_particles = pos.shape[0]
-    
-    # Kinetic energy
-    ke = 0.5 * m_part * jnp.sum(vel**2)
-    
-    # Potential energy with periodic boundaries
-    dx = pos[:, None, :] - pos[None, :, :]
-    dx = dx - length * jnp.round(dx / length)  # periodic boundaries
-    r2 = jnp.sum(dx**2, axis=-1) + softening**2  # softening squared
-    r = jnp.sqrt(r2)
-    
-    # Upper triangular part to avoid double counting, exclude diagonal
-    mask = jnp.triu(jnp.ones((n_particles, n_particles)), k=1)
-    pe = -G * m_part * m_part * jnp.sum(mask / r)
-    
-    total_energy = ke + pe
-    
-    return ke, pe, total_energy
+from functools import partial
 
 def calculate_energy_variable_mass(pos, vel, masses, G, length, softening):
     """Calculate kinetic, potential, and total energy of the system with variable masses"""
     n_particles = pos.shape[0]
-    
     # Kinetic energy (each particle has its own mass)
     ke = 0.5 * jnp.sum(masses * jnp.sum(vel**2, axis=1))
-    
     # Potential energy with periodic boundaries and variable masses
     dx = pos[:, None, :] - pos[None, :, :]
     dx = dx - length * jnp.round(dx / length)  # periodic boundaries
     r2 = jnp.sum(dx**2, axis=-1) + softening**2  # softening squared
     r = jnp.sqrt(r2)
-    
     # Mass matrix for pairwise interactions
     mass_matrix = masses[:, None] * masses[None, :]
-    
     # Upper triangular part to avoid double counting, exclude diagonal
     mask = jnp.triu(jnp.ones((n_particles, n_particles)), k=1)
     pe = -G * jnp.sum(mask * mass_matrix / r)
-    
     total_energy = ke + pe
-    
     return ke, pe, total_energy
 
 def blob_enclosed_mass_gaussian(r, M, sigma):
-    """
-    Calculate the enclosed mass for a Gaussian blob.
-    
-    Parameters:
-    -----------
-    r : jnp.array
-        Radial distances
-    M : float
-        Total mass
-    sigma : float
-        Standard deviation of the Gaussian
-        
-    Returns:
-    --------
-    M_enclosed : jnp.array
-        Enclosed mass at each radius r
-    """
     x = r / (jnp.sqrt(2) * sigma)
     term1 = erf(x)
     term2 = jnp.sqrt(2 / jnp.pi) * x * jnp.exp(-x**2)
     return M * (term1 - term2)
 
 def blob_enclosed_mass_nfw(r, M, rs, c):
-        """
-        Calculate the enclosed mass for an NFW profile.
-
-        Parameters:
-        -----------
-        r : jnp.array
-            Radial distances
-        M : float
-            Total mass
-        rs : float
-            Scale radius
-        c : float
-            Concentration parameter
-
-        Returns:
-        --------
-        M_enclosed : jnp.array
-            Enclosed mass at each radius r
-        """
         x = r / rs
         norm = jnp.log(1 + c) - c / (1 + c)
         enclosed = (jnp.log(1 + x) - x / (1 + x)) / norm
@@ -100,95 +39,38 @@ def blob_enclosed_mass_nfw(r, M, rs, c):
         return M * enclosed
 
 def blob_enclosed_mass_plummer(r, M, rs):
-    """
-    Calculate the enclosed mass for a Plummer sphere.
-    
-    Parameters:
-    -----------
-    r : jnp.array
-        Radial distances
-    M : float
-        Total mass
-    rs : float
-        Plummer radius (scale radius)
-        
-    Returns:
-    --------
-    M_enclosed : jnp.array
-        Enclosed mass at each radius r
-    """
     x = r / rs
     enclosed = x**3 / (1 + x**2)**(3.0/2.0)
     # Ensure no negative values for r=0
     enclosed = jnp.where(r > 0, enclosed, 0.0)
     return M * enclosed
 
-def apply_density_scaling(density_field, scaling_type="none", **scaling_kwargs):
-    """
-    Apply scaling transformation to density field.
-    
-    Parameters:
-    -----------
-    density_field : jnp.array
-        Input density field to scale
-    scaling_type : str
-        Type of scaling to apply:
-        - "none": No scaling (default)
-        - "log": Logarithmic scaling: log(field + offset)
-        - "sqrt": Square root scaling: sqrt(field)
-        - "normalize": Normalize to [0, 1]
-        - "standardize": Standardize to mean=0, std=1
-        - "power": Power scaling: field^power
-    scaling_kwargs : dict
-        Additional parameters for scaling:
-        - log_offset: offset for log scaling (default: 1e-8)
-        - power: exponent for power scaling (default: 0.5)
-    
-    Returns:
-    --------
-    scaled_field : jnp.array
-        Scaled density field
-    """
+
+@partial(jax.jit, static_argnames=['scaling_type'])
+def apply_density_scaling(density_field, scaling_type="none"):
     if scaling_type == "none":
         # No scaling: f(x) = x
         return density_field
     
     elif scaling_type == "log":
-        # Logarithmic scaling: f(x) = log(x + offset)
-        log_offset = float(scaling_kwargs.get("log_offset", 1e-8))
-        return jnp.log(density_field + log_offset)
+        return jnp.log(density_field + 1e-8)
+
+    elif scaling_type == "asinh":
+        return jnp.asinh(density_field)
+    
+    elif scaling_type == "signed_log":
+        return jnp.sign(density_field) * jnp.log(jnp.abs(density_field) + 1e-8)
     
     elif scaling_type == "sqrt":
-        # Square root scaling: f(x) = sqrt(max(x, 0))
-        return jnp.sqrt(jnp.maximum(density_field, 0.0))
-    
-    elif scaling_type == "normalize":
-        # Normalize to [0, 1]: f(x) = (x - min(x)) / (max(x) - min(x))
-        field_min = jnp.min(density_field)
-        field_max = jnp.max(density_field)
-        field_range = field_max - field_min
-        field_range = jnp.clip(field_max - field_min, 1e-8, None)  # Avoid division by zero
-        return (density_field - field_min) / field_range
-    
-    elif scaling_type == "standardize":
-        # Standardize to mean 0, std 1: f(x) = (x - mean(x)) / std(x)
-        field_mean = jnp.mean(density_field)
-        field_std = jnp.std(density_field)
-        if field_std > 0:
-            return (density_field - field_mean) / field_std
-        else:
-            return density_field - field_mean
-    
-    elif scaling_type == "power":
-        # Power scaling: f(x) = max(x, 0) ** power
-        power = float(scaling_kwargs.get("power", 0.5))
-        return jnp.power(jnp.maximum(density_field, 0.0), power)
+        # Square root scaling: f(x) = sqrt(x)
+        return jnp.sqrt(density_field)
     
     else:
         raise ValueError(f"Unknown scaling_type: {scaling_type}. Available options: "
-                        "'none', 'log', 'sqrt', 'normalize', 'standardize', 'power'")
+                        "'none', 'log', 'sqrt', 'asinh', 'signed_log'.")
     
 # We use the approximation from Robotham & Howlett (2018)
+@partial(jax.jit, static_argnames=['x'])
 def approx_inverse_nfw_cdf(x, rs, c):
     p = 0.3333 - 0.2*jnp.log10(c) + 0.01*c
     a = 1.0 / c 
@@ -196,65 +78,6 @@ def approx_inverse_nfw_cdf(x, rs, c):
     r = rs * (q**(-1.0/p) - 1.0) / (1.0 - q**(-1.0/p) / c)
     return r
 
-def extract_true_values_from_blobs(blobs_params):
-        """Extract true parameter values from blobs_params configuration."""
-        true_values = {}
-        
-        for blob_idx, blob in enumerate(blobs_params):
-            # Extract position parameters
-            if blob['pos_type'] == 'gaussian':
-                true_values[f"blob{blob_idx}_sigma"] = blob['pos_params']['sigma']
-                true_values[f"blob{blob_idx}_center"] = blob['pos_params']['center']
-            elif blob['pos_type'] == 'nfw':
-                true_values[f"blob{blob_idx}_rs"] = blob['pos_params']['rs']
-                true_values[f"blob{blob_idx}_c"] = blob['pos_params']['c']
-                true_values[f"blob{blob_idx}_center"] = blob['pos_params']['center']
-            elif blob['pos_type'] == 'plummer':
-                true_values[f"blob{blob_idx}_rs"] = blob['pos_params']['rs']
-                true_values[f"blob{blob_idx}_center"] = blob['pos_params']['center']
-            
-            # Extract velocity parameters
-            if blob['vel_type'] == 'cold':
-                if 'vel_dispersion' in blob['vel_params']:
-                    true_values[f"blob{blob_idx}_vel_dispersion"] = blob['vel_params']['vel_dispersion']
-            elif blob['vel_type'] == 'virial':
-                if 'virial_ratio' in blob['vel_params']:
-                    true_values[f"blob{blob_idx}_virial_ratio"] = blob['vel_params']['virial_ratio']
-            elif blob['vel_type'] == 'circular':
-                if 'vel_factor' in blob['vel_params']:
-                    true_values[f"blob{blob_idx}_vel_factor"] = blob['vel_params']['vel_factor']
-        
-        return true_values
-
-def format_prior_info(param_name, prior_params, prior_type):
-    if param_name not in prior_params:
-        return "No prior"
-    prior_info = prior_params[param_name]
-    if prior_type == "blob_gaussian":
-        if isinstance(prior_info.get('mu'), list):
-            mu_str = f"[{', '.join([f'{x:.2f}' for x in prior_info['mu']])}]"
-        else:
-            mu_str = f"{prior_info.get('mu', 'N/A')}"
-        return f"Prior: N({mu_str}, {prior_info.get('sigma', 'N/A')})"
-    elif prior_type == "blob_uniform":
-        if isinstance(prior_info.get('low'), list):
-            low_str = f"[{', '.join([f'{x:.2f}' for x in prior_info['low']])}]"
-            high_str = f"[{', '.join([f'{x:.2f}' for x in prior_info['high']])}]"
-        else:
-            low_str = f"{prior_info.get('low', 'N/A')}"
-            high_str = f"{prior_info.get('high', 'N/A')}"
-        return f"Prior: U({low_str}, {high_str})"
-    else:
-        return f"Prior: {prior_type}"
-
-def format_initial_pos(param_name, initial_position):
-    if param_name not in initial_position:
-        return "No init"
-    init_val = initial_position[param_name]
-    if isinstance(init_val, list):
-        return f"Init: [{', '.join([f'{x:.2f}' for x in init_val])}]"
-    else:
-        return f"Init: {init_val}"
 
 def smooth_trajectory(traj, window):
         if window < 2:
@@ -266,6 +89,237 @@ def smooth_trajectory(traj, window):
             for dim in range(traj.shape[1])
         ]).T
         return smoothed
+
+def extract_blob_parameters(blob_config, mode, infered_params):
+    # Initialize parameter collectors
+    changing_params = []
+    fixed_params = []
+    other_params = {}
+    param_info = {'fixed_param_order': [], 'changing_param_order': []}
+    
+    # Process position parameters
+    pos_params = blob_config['pos_params']
+    pos_type = blob_config['pos_type']
+    other_params['pos_type'] = pos_type
+    
+    if pos_type == 'gaussian':
+        # Handle center
+        if mode == 'sampling' and 'center' in infered_params :
+                changing_params.extend(pos_params['center'])
+                param_info['changing_param_order'].extend(['center_x', 'center_y', 'center_z'])
+        else:
+            fixed_params.extend(pos_params['center'])
+            param_info['fixed_param_order'].extend(['center_x', 'center_y', 'center_z'])
+            
+        # Handle sigma
+        if mode == 'sampling' and 'sigma' in infered_params:
+                changing_params.append(pos_params['sigma'])
+                param_info['changing_param_order'].append('sigma')
+        else:
+            fixed_params.append(pos_params['sigma'])
+            param_info['fixed_param_order'].append('sigma')
+    
+    elif pos_type == 'nfw':
+        # Handle scale radius and concentration
+        if mode == 'sampling' and 'rs' in infered_params:
+                changing_params.append(pos_params['rs'])
+                param_info['changing_param_order'].append('rs')
+        else:
+            fixed_params.append(pos_params['rs'])
+            param_info['fixed_param_order'].append('rs')
+
+        if mode == 'sampling' and 'c' in infered_params:
+                changing_params.append(pos_params['c'])
+                param_info['changing_param_order'].append('c')
+        else:
+            fixed_params.append(pos_params['c'])
+            param_info['fixed_param_order'].append('c')
+        
+        # Handle center
+        if mode == 'sampling' and 'center' in infered_params:
+                changing_params.extend(pos_params['center'])
+                param_info['changing_param_order'].extend(['center_x', 'center_y', 'center_z'])
+        else:
+            fixed_params.extend(pos_params['center'])
+            param_info['fixed_param_order'].extend(['center_x', 'center_y', 'center_z'])
+
+    elif pos_type == 'plummer':
+        # Handle scale radius
+        if mode == 'sampling' and 'rs' in infered_params:
+                changing_params.append(pos_params['rs'])
+                param_info['changing_param_order'].append('rs')
+        else:
+            fixed_params.append(pos_params['rs'])
+            param_info['fixed_param_order'].append('rs')
+        
+        # Handle center
+        if mode == 'sampling' and 'center' in infered_params:
+                changing_params.extend(pos_params['center'])
+                param_info['changing_param_order'].extend(['center_x', 'center_y', 'center_z'])
+        else:
+            fixed_params.extend(pos_params['center'])
+            param_info['fixed_param_order'].extend(['center_x', 'center_y', 'center_z'])
+    
+    # Process velocity parameters
+    vel_params = blob_config['vel_params']
+    vel_type = blob_config['vel_type']
+    other_params['vel_type'] = vel_type
+    
+    if vel_type == 'circular':
+        if mode == 'sampling' and 'vel_factor' in infered_params:
+                changing_params.append(vel_params['vel_factor'])
+                param_info['changing_param_order'].append('vel_factor')
+        else:
+            fixed_params.append(vel_params['vel_factor'])
+            param_info['fixed_param_order'].append('vel_factor')
+        other_params['distrib'] = vel_params['distrib']    
+    
+    # Add non-varying parameters
+    other_params['n_part'] = blob_config['n_part']
+    fixed_params.append(blob_config['m_part'])
+    param_info['fixed_param_order'].append('m_part')
+    
+    return jnp.array(changing_params, dtype=jnp.float32), jnp.array(fixed_params, dtype=jnp.float32), other_params, param_info
+
+def blobs_params_init(blobs_params, prior_params, initial_position, mode):
+    all_params = []
+    all_fixed = []
+    all_other_params = []
+    all_info = []
+    
+    for blob_idx, blob in enumerate(blobs_params):
+        if mode == 'sampling':
+            infered_params = extract_params_to_infer(blob, blob_idx, prior_params, initial_position)
+        else:
+            infered_params = None
+        params, fixed, others, info = extract_blob_parameters(blob, mode, infered_params)
+        all_params.append(params)
+        all_fixed.append(fixed)
+        all_other_params.append(others)
+        all_info.append(info)
+    
+    # Stack all parameter arrays
+    params = jnp.stack(all_params)
+    fixed = jnp.stack(all_fixed)
+    
+    return params, fixed, all_other_params, all_info
+
+def extract_params_to_infer(blob, blob_idx, prior_params, initial_position):
+    # Initialize set for parameters to infer
+    params_to_infer = set()
+    
+    # Position parameters
+    if blob['pos_type'] == 'gaussian':
+        sigma_key = f"blob{blob_idx}_sigma"
+        center_key = f"blob{blob_idx}_center_x"
+        
+        if (sigma_key in prior_params and 
+            sigma_key in initial_position):
+            params_to_infer.add('sigma')
+            
+        if (center_key in prior_params and 
+            center_key in initial_position):
+            params_to_infer.add('center')
+            
+    elif blob['pos_type'] == 'nfw':
+        rs_key = f"blob{blob_idx}_rs"
+        c_key = f"blob{blob_idx}_c"
+        center_key = f"blob{blob_idx}_center_x"
+        
+        if (rs_key in prior_params and 
+            rs_key in initial_position):
+            params_to_infer.add('rs')
+            
+        if (c_key in prior_params and 
+            c_key in initial_position):
+            params_to_infer.add('c')
+            
+        if (center_key in prior_params and 
+            center_key in initial_position):
+            params_to_infer.add('center')
+            
+    elif blob['pos_type'] == 'plummer':
+        rs_key = f"blob{blob_idx}_rs"
+        center_key = f"blob{blob_idx}_center_x"
+        
+        if (rs_key in prior_params and 
+            rs_key in initial_position):
+            params_to_infer.add('rs')
+            
+        if (center_key in prior_params and 
+            center_key in initial_position):
+            params_to_infer.add('center')
+    
+    # Velocity parameters
+    if blob['vel_type'] == 'circular':
+        vel_key = f"blob{blob_idx}_vel_factor"
+        if (vel_key in prior_params and 
+            vel_key in initial_position):
+            params_to_infer.add('vel_factor')
+            
+    elif blob['vel_type'] == 'cold':
+        vel_key = f"blob{blob_idx}_vel_dispersion"
+        if (vel_key in prior_params and 
+            vel_key in initial_position):
+            params_to_infer.add('vel_dispersion')
+            
+    elif blob['vel_type'] == 'virial':
+        vel_key = f"blob{blob_idx}_virial_ratio"
+        if (vel_key in prior_params and 
+            vel_key in initial_position):
+            params_to_infer.add('virial_ratio')
+    
+    return list(params_to_infer)
+
+def sampling_params_init(params_infos, initial_position):
+    """Initialize sampling parameters array from initial positions in config"""
+    all_initial_params = []
+    n_blobs = len(params_infos)
+    params_order = params_infos[0]['changing_param_order']
+    for blob_idx in range(n_blobs):
+        blob_initial_params = []
+        for param_name in params_order:
+            # Check if the parameter exists in initial_position
+            if f"blob{blob_idx}_{param_name}" in initial_position:
+                blob_initial_params.append(initial_position[f"blob{blob_idx}_{param_name}"])
+            else:
+                raise ValueError(f"Parameter blob{blob_idx}_{param_name} not found in initial_position.")
+        
+        all_initial_params.append(jnp.array(blob_initial_params, dtype=jnp.float32))
+    return jnp.stack(all_initial_params) 
+
+def prior_params_extract(prior_type, prior_params, params_infos):
+    """Extract prior parameters from prior_params dict based on params_infos"""
+    all_prior_params = []
+    n_blobs = len(params_infos)
+    params_order = params_infos[0]['changing_param_order']
+    for blob_idx in range(n_blobs):
+        blob_prior_params = []
+        for param_name in params_order:
+            # Check if the parameter exists in initial_position
+            if f"blob{blob_idx}_{param_name}" in prior_params:
+                if prior_type == "blob_gaussian":
+                    # For Gaussian priors, we expect a dict with 'mu' and 'sigma'
+                    if isinstance(prior_params[f"blob{blob_idx}_{param_name}"], dict):
+                        blob_prior_params.append(prior_params[f"blob{blob_idx}_{param_name}"]['mu'])
+                        blob_prior_params.append(prior_params[f"blob{blob_idx}_{param_name}"]['sigma'])
+                    else:
+                        raise ValueError(f"Expected Gaussian prior for blob{blob_idx}_{param_name}, but found {prior_params[f'blob{blob_idx}_{param_name}']}")
+                elif prior_type == "blob_uniform":
+                    # For Uniform priors, we expect a dict with 'low' and 'high'
+                    if isinstance(prior_params[f"blob{blob_idx}_{param_name}"], dict):
+                        blob_prior_params.append(prior_params[f"blob{blob_idx}_{param_name}"]['low'])
+                        blob_prior_params.append(prior_params[f"blob{blob_idx}_{param_name}"]['high'])
+                    else:
+                        raise ValueError(f"Expected Uniform prior for blob{blob_idx}_{param_name}, but found {prior_params[f'blob{blob_idx}_{param_name}']}")
+            else:
+                raise ValueError(f"Parameter blob{blob_idx}_{param_name} not found in initial_position.")
+        all_prior_params.append(jnp.array(blob_prior_params, dtype=jnp.float32))
+    return jnp.stack(all_prior_params) 
+
+
+    ## TO BE CHECKED 
+
 
 def tune_step_size(sampler_class, log_posterior, initial_position, rng_key, num_trials=200, step_sizes=None):
     import jax
@@ -292,5 +346,3 @@ def tune_step_size(sampler_class, log_posterior, initial_position, rng_key, num_
             best_step = step_size
     print(f"Selected step_size={best_step} with acceptance_rate={best_rate}")
     return best_step
-
-

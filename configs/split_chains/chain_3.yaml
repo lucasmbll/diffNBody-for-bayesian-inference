@@ -1,0 +1,91 @@
+# Configuration for N-body parameter inference using blobs model
+
+# python src/run_experiments.py --config configs/split_chains/chain_3.yaml
+
+# mpiexec -n 4 python src/run_experiments.py --config configs/sampling/test_sampling.yamld
+
+# --- HARDWARE/CLUSTER SETTINGS ---
+# Option 1: Use specific GPUs in order
+#mpi_gpu_devices: 0  # Use GPUs 1, 2, 3, 4 for MPI processes
+
+# Option 2: Use GPU range (alternative to above)
+# mpi_gpu_devices: "1,2,3,4"  # String format also supported
+
+# Option 3: Use all available GPUs (fallback)
+cuda_visible_devices: '0'  # Used if mpi_gpu_devices not specified
+# --- EXPERIMENT MODE ---
+mode: sampling      # Experiment mode (options: "sim", "sampling")
+
+# --- PLOT & VIDEO SETTINGS ---
+plot_settings:
+  enable_energy_tracking: true  # Calculate and plot energy evolution
+  density_field_plot: 
+    do: true  # Plot density field
+  trajectories_plot: 
+    do: true  # Plot particle trajectories
+    num_trajectories: 5     # Number of particle trajectories to plot
+    zoom_for_trajectories: true  # Zoom in on trajectories
+  timeseries_plot: 
+    do: true  # Plot time series of particle positions
+    n_timesteps: 8        # Number of timesteps to plot
+  velocity_plot: 
+    do: true  
+  generate_video: 
+    do: false  # Generate video of the simulation
+    video_fps: 30            # Video frames per second
+    video_dpi: 200           # Video resolution DPI
+
+# --- FORWARD MODEL PARAMETERS ---
+model_params:  
+  # General parameters
+  G: 1              # Gravitational constant
+  length: 64          # Box size
+  softening: 1      # Softening length
+  t_f: 0.8            # Final time
+  dt: 0.01            # Time step
+  data_seed: 42       # Random seed for data generation
+  solver: "LeapfrogMidpoint" # Solver type: "LeapfrogMidpoint", "Dopri5", "Dopri8", "Tsit5", "Heun, "Midpoint"
+  
+  # Density field scaling options
+  density_scaling: "none"  # Options: "none", "log", "sqrt", "normalize", "standardize", "power"
+  #scaling_kwargs:
+    #log_offset: 1.0e-8  # Offset for log scaling
+  
+  # Blob parameters - a list of blob configurations
+  blobs_params:
+    # Blob 1: Gaussian at corner 1 of triangle
+      - n_part: 2000
+        m_part: 6
+        pos_type: gaussian
+        pos_params:
+          sigma: 6.4  
+          center: [32.0, 32.0, 32.0]  
+        vel_type: circular
+        vel_params:
+          vel_factor: 0.1
+          distrib: True
+
+# --- LIKELIHOOD SETTINGS ---
+likelihood_type: ll1   # Options: "ll1", "ll2"
+likelihood_kwargs: 
+  noise: 1  # Standard deviation of instrumental noise
+
+
+# --- PRIOR SETTINGS ---
+prior_type: blob_uniform
+prior_params:
+  # Uniform priors for the parameters we want to infer
+  blob0_sigma: {low: 2.0, high: 10.0}
+  blob0_center: {low: [25.0, 25.0, 25.0], high: [40.0, 40.0, 40.0]}
+
+# --- SAMPLER SETTINGS ---
+sampler: nuts           # Options: "hmc" or "nuts"
+num_samples: 5000        # Number of MCMC samples to draw
+sampling_seed: 12345    # Random seed for reproducibility
+# For NUTS:
+num_warmup: 500      # Number of warmup steps 
+
+# Initial position for the sampler - start with values different from the true ones
+initial_position: 
+  - blob0_sigma: 8.0
+    blob0_center: [36.0, 36.0, 36.0]

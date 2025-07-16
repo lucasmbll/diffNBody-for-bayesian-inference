@@ -52,73 +52,44 @@ def make_diffrax_ode(softening, G, length, masses):
     return nbody_ode
 
 def model(
-    blobs_params,
+    params,
+    fixed_params,
+    other_params,
+    params_infos,
     G,
     length,
     softening,
     t_f,
     dt,
-    ts=None,
-    key=None,
-    density_scaling="none",
+    key,
+    density_scaling,
+    velocity_scaling,
     solver="LeapfrogMidpoint",
-    **scaling_kwargs
 ):
-    """
-    Unified model function that uses blob parameters to initialize and simulate N-body system.
-    
-    Parameters:
-    -----------
-    blobs_params : list of dict
-        List of dictionaries with blob parameters
-    G : float
-        Gravitational constant
-    length : float
-        Box size
-    softening : float
-        Softening length
-    t_f : float
-        Final time
-    dt : float
-        Time step
-    ts : array-like, optional
-        Time points to save at
-    key : jax.random.PRNGKey, optional
-        Random key for initialization
-    density_scaling : str
-        Type of scaling to apply to density fields
-    **scaling_kwargs : dict
-        Additional parameters for scaling
-        
-    Returns:
-    --------
-    input_field : jnp.array
-        Scaled input density field
-    init_pos : jnp.array
-        Initial positions
-    final_pos : jnp.array
-        Final positions
-    output_field : jnp.array
-        Scaled output density field
-    sol : diffrax solution object
-        Solution of the N-body simulation
-    masses : jnp.array
-        Particle masses
-    """
     grid_shape = (length, length, length)
+    # Initialize positions, velocities, and masses for all blobs    
+    init_pos, init_vel, masses = initialize_blobs(params, fixed_params, other_params, params_infos, length, G, softening, key)
+    
+    # Create density fields (weighted by mass for proper density)
+    initial_density_field = cic_paint(jnp.zeros(grid_shape), init_pos, weight=masses)
+    initial_density_field = apply_density_scaling(initial_density_field, density_scaling)
 
-    # Initialize positions, velocities, and masses for all blobs
-    if key is None:
-        key = jax.random.PRNGKey(0)
+    # Create velocity fields (weighted by mass and initial velocity)
+    initial_vx_field = cic_paint(jnp.zeros(grid_shape), init_pos, weight=masses * init_vel[:, 0])
+    initial_vx_field = apply_density_scaling(initial_vx_field, velocity_scaling)
     
-    init_pos, init_vel, masses = initialize_blobs(blobs_params, length, G, softening, key)
+    initial_vy_field = cic_paint(jnp.zeros(grid_shape), init_pos, weight=masses * init_vel[:, 1])
+    initial_vy_field = apply_density_scaling(initial_vy_field, velocity_scaling)
+
+    initial_vz_field = cic_paint(jnp.zeros(grid_shape), init_pos, weight=masses * init_vel[:, 2])
+    initial_vz_field = apply_density_scaling(initial_vz_field, velocity_scaling)
+
+    initial_phase_field = jnp.stack([initial_density_field, initial_vx_field, initial_vy_field, initial_vz_field], axis=-1)    
     
-    # Create raw density fields (weighted by mass for proper density)
-    raw_input_field = cic_paint(jnp.zeros(grid_shape), init_pos, weight=masses)
+
     y0 = jnp.stack([init_pos, init_vel], axis=0)
-
-    if ts is None:
-        ts = jnp.linspace(0, t_f, int(t_f // dt) + 1)
+    
+    ts = jnp.linspace(0, t_f, int(t_f // dt) + 1)
 
     # Calculate max_steps with safety factor
     estimated_steps = int((t_f - 0.0) / dt)
@@ -161,11 +132,22 @@ def model(
         max_steps=max_steps
     )
     final_pos = sol.ys[-1, 0]
-    raw_output_field = cic_paint(jnp.zeros(grid_shape), final_pos, weight=masses)
+    final_vel = sol.ys[-1, 1]
+    
+    
+    final_density_field = cic_paint(jnp.zeros(grid_shape), final_pos, weight=masses)
+    final_density_field = apply_density_scaling(final_density_field, density_scaling)
     
     # Apply scaling to both input and output fields
-    input_field = apply_density_scaling(raw_input_field, density_scaling, **scaling_kwargs)
-    output_field = apply_density_scaling(raw_output_field, density_scaling, **scaling_kwargs)
     
-    return input_field, output_field, sol.ts, sol.ys, masses
+    final_vx_field = cic_paint(jnp.zeros(grid_shape), final_pos, weight=masses * final_vel[:, 0])
+    final_vx_field = apply_density_scaling(final_vx_field, velocity_scaling)
+    final_vy_field = cic_paint(jnp.zeros(grid_shape), final_pos, weight=masses * final_vel[:, 1])
+    final_vy_field = apply_density_scaling(final_vy_field, velocity_scaling)
+    final_vz_field = cic_paint(jnp.zeros(grid_shape), final_pos, weight=masses * final_vel[:, 2])
+    final_vz_field = apply_density_scaling(final_vz_field, velocity_scaling)
+
+    final_phase_field = jnp.stack([final_density_field, final_vx_field, final_vy_field, final_vz_field], axis=-1)
+    
+    return initial_phase_field, final_phase_field, sol.ts, sol.ys, masses
 
