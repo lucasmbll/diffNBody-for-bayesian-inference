@@ -30,8 +30,8 @@ def main(config_path):
     mode = config.get("mode")
     if mode is None:
         raise ValueError("Please specify the mode in the configuration file under 'mode' key : 'sim' or 'sampling'.")
-    if mode not in ["sim", "sampling"]:
-        raise ValueError(f"Invalid mode: {mode}. Must be either 'sim' or 'sampling'")
+    if mode not in ["sim", "sampling", "mle"]:
+        raise ValueError(f"Invalid mode: {mode}. Must be either 'sim', 'sampling', or 'mle'.")
 
     # --- Output directory ---
     now_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -74,6 +74,11 @@ def main(config_path):
         prior_params = config.get("prior_params", None)
         if prior_params is None or prior_type is None:
             raise ValueError("No prior specified in config file. Please provide 'prior_params' and 'prior_type' in your configuration.")
+    elif mode == "mle":
+        initial_position = config.get("initial_position", None)
+        if initial_position is None:
+            raise ValueError("No initial position specified in config file. Please provide 'initial_position' in your configuration.")
+        prior_params = None
     else:
         initial_position = None
         prior_params = None
@@ -146,7 +151,7 @@ def main(config_path):
             print("Energy calculation completed.")
     
     if plot_settings['density_field_plot'].get("do"):
-        from data_plotting import plot_density_fields_and_positions, plot_position_vs_radius_blobs
+        from sim_plots import plot_density_fields_and_positions, plot_position_vs_radius_blobs
         print("Creating density fields and positions plot...")
         fig = plot_density_fields_and_positions(
             G, t_f, dt, length, n_part, initial_field, sol_ys[0, 0], final_field, sol_ys[-1, 0],
@@ -157,7 +162,7 @@ def main(config_path):
         print("Density fields and positions plots saved successfully")
     
     if plot_settings['timeseries_plot'].get("do"):
-        from data_plotting import plot_timesteps
+        from sim_plots import plot_timesteps
         print("Creating timesteps plot...")
         plot_timesteps_num = config.get("plot_timesteps", 10)
         fig, _ = plot_timesteps(sol_ts, sol_ys, length, G, t_f, dt, n_part, num_timesteps=plot_timesteps_num, softening=softening, masses=masses, solver=solver,
@@ -167,7 +172,7 @@ def main(config_path):
         print("Timesteps plot saved successfully")
     
     if plot_settings['trajectories_plot'].get("do"):
-        from data_plotting import plot_trajectories
+        from sim_plots import plot_trajectories
         print("Creating trajectories plot...")
         num_trajectories = plot_settings['trajectories_plot'].get("num_trajectories", 10)
         zoom = plot_settings['trajectories_plot'].get("zoom_for_trajectories", True)
@@ -177,7 +182,7 @@ def main(config_path):
         print("Trajectories plot saved successfully")
     
     if plot_settings['velocity_plot'].get("do"):
-        from data_plotting import plot_velocity_distributions, plot_velocity_vs_radius_blobs
+        from sim_plots import plot_velocity_distributions, plot_velocity_vs_radius_blobs
         print("Creating velocity distributions plot...")
         fig = plot_velocity_distributions(initial_field, final_field, sol_ys, G, t_f, dt, length, n_part, solver)
         fig.savefig(os.path.join(base_dir, "velocity.png"))
@@ -187,7 +192,7 @@ def main(config_path):
 
     if plot_settings['generate_video'].get("do"):
         print("Creating simulation video...")
-        from data_plotting import create_video
+        from sim_plots import create_video
         video_type = plot_settings['generate_video'].get("video_type", "particles")
         if video_type not in ["particles", "density", "velocity"]:
             print(f"Warning: Unknown video type '{video_type}'. Defaulting to 'particles'.")
@@ -218,117 +223,193 @@ def main(config_path):
         print("Simulation completed.")
         return
 
-    # --- SAMPLING ---
     # Load data
     data = final_field
-    
-    #from likelihood import get_log_posterior
-    #from sampling import extract_params_to_infer
-    from utils import prior_params_extract
-    prior_params_array = prior_params_extract(prior_type, prior_params, params_infos)
-    print(prior_params_array[:, ::2])
-    print(prior_params_array[:, 1::2])
-    print('Starting sampling process...')
-    
+
     # Likelihood
     likelihood_type = config.get("likelihood_type", None)
     likelihood_kwargs = config.get("likelihood_kwargs", {})
     noise = likelihood_kwargs.get("noise", 1.0)
 
+    # Initial parameters for sampling or MLE
+    from utils import sampling_params_init
+    init_params = sampling_params_init(params_infos, initial_position)
+
     if likelihood_type is None:
         raise ValueError("No likelihood type specified in config file. Please provide 'likelihood_type' in your configuration.")
 
     
-    from likelihood import log_posterior
-    # Posterior
-    log_posterior_fn = lambda params: log_posterior(params, likelihood_type, data, model_fn, data_key, prior_params_array, prior_type, noise)
+    if mode == "sampling":
+        print('Starting sampling process...')
+
+        # Prior 
+        from utils import prior_params_extract
+        prior_params_array = prior_params_extract(prior_type, prior_params, params_infos)
+
+        # --- SAMPLING ---   
+        from likelihood import log_posterior
+        # Posterior
+        log_posterior_fn = lambda params: log_posterior(params, likelihood_type, data, model_fn, data_key, prior_params_array, prior_type, noise)
+
+        # Sampling initialization
+        rng_key = jax.random.PRNGKey(config.get("sampling_seed", 12345))
+        num_samples = config.get("num_samples", 1000)
+        
+        progress_bar = config.get("progress_bar", False)
+
+        if config["sampler"] == "nuts":
+            from sampling import run_nuts
+            num_warmup = config.get("num_warmup", 1000)
+            print("Running NUTS sampler...")
+            print(f"Warmup steps: {num_warmup}")
+            print(f"Sampling steps: {num_samples}")
+            print(f"Initial position: {initial_position}")
+            samples = run_nuts(
+                log_posterior_fn,
+                init_params,
+                rng_key,
+                num_samples,
+                num_warmup,
+                progress_bar=progress_bar
+            )
+
+        # Run the sampler
+        elif config["sampler"] == "hmc": #TO BE ADAPTED for warmup
+            from sampling import run_hmc
+            num_integration_steps = config.get("num_integration_steps", 50)
+            num_warmup = config.get("num_warmup", 1000)
+            print("Running HMC sampler...")
+            print(f"Warmup steps: {num_warmup}")
+            print(f"Sampling steps: {num_samples}")
+            print(f"Initial position: {initial_position}")
+            print(f"HMC parameters: num_integration_steps={num_integration_steps}")
+            samples = run_hmc(log_posterior_fn, init_params, num_integration_steps, rng_key, num_samples, num_warmup, progress_bar=progress_bar)
+            
+        
+        elif config["sampler"] == "rwm": 
+            print("Running Random Walk Metropolis sampler...")
+            from sampling import run_rwm
+            step_size = config.get("step_size", 0.1)
+            samples = run_rwm(
+                log_posterior_fn,
+                init_params,
+                step_size,
+                rng_key,
+                num_samples
+            )
+        """
+        elif config["sampler"] == "mala":
+            print("Running MALA sampler...")
+            from sampling import run_mala
+            step_size = config.get("step_size", 0.01)
+            num_warmup = config.get("num_warmup", 0)  
+            autotuning = config.get("autotuning", False)
+            samples = run_mala(
+                log_posterior,
+                initial_position,
+                step_size,
+                rng_key,
+                num_samples,
+                num_warmup=num_warmup,  
+                autotuning=autotuning
+            )
+
+        else:
+            raise ValueError("Unknown sampler: should be 'hmc', 'nuts', 'rwm', or 'mala'")
+        """
+        samples_dict = {}
+        for i in range(len(params_infos)):
+            for j, key in enumerate(params_infos[i]['changing_param_order']):
+                samples_dict[f'blob{i}_{key}'] = samples[:, i, j]  
+        np.savez(os.path.join(base_dir, "samples.npz"), **{k: np.array(v) for k, v in samples_dict.items()})
+        print(f"Results saved to {os.path.join(base_dir, 'samples.npz')}")
+        
+        data_dict = {} 
+        for i in range(len(params_infos)):
+            for j, key in enumerate(params_infos[i]['changing_param_order']):
+                data_dict[f'blob{i}_{key}'] = data_params[i, j]  
+        np.savez(os.path.join(base_dir, "truth.npz"), **{k: np.array(v) for k, v in data_dict.items()})
+        print(f"True values saved to {os.path.join(base_dir, 'truth.npz')}")
+        return
     
+    else:  # mode == "mle"
+        # --- MLE OPTIMIZATION ---
+        print("Starting MLE optimization...")
+        
+        from likelihood import log_likelihood_1
+        # For MLE, we only need the likelihood (no prior)
+        log_likelihood_fn = lambda params: log_likelihood_1(params, data, noise, model_fn, data_key)
+        
+        # MLE configuration
+        mle_config = config.get("mle", {})
+        optimizer_name = mle_config.get("optimizer", "adam")
+        learning_rate = mle_config.get("learning_rate", 0.001)
+        num_iterations = mle_config.get("num_iterations", 1000)
+        print_every = mle_config.get("print_every", 100)
+        multi_start = mle_config.get("multi_start", False)
+        num_starts = mle_config.get("num_starts", 5)
+        perturbation_scale = mle_config.get("perturbation_scale", 0.1)
+        
+        # Run optimization
+        from mle import run_mle_optimization, run_multi_start_mle, create_random_initial_positions
+        
+        if multi_start:
+            # Create multiple starting points
+            initial_positions = create_random_initial_positions(
+                init_params, num_starts, perturbation_scale
+            )
+            
+            # Run multi-start optimization
+            best_params, best_history, all_results = run_multi_start_mle(
+                log_likelihood_fn, initial_positions, optimizer_name, 
+                learning_rate, num_iterations, print_every
+            )
+            
+            # Save all results
+            mle_results = {
+                'best_params': best_params,
+                'best_history': best_history,
+                'all_results': all_results,
+                'config': mle_config
+            }
+            
+        else:
+            # Single optimization run
+            best_params, history = run_mle_optimization(
+                log_likelihood_fn, init_params, optimizer_name, 
+                learning_rate, num_iterations, print_every
+            )
+            
+            mle_results = {
+                'best_params': best_params,
+                'history': history,
+                'config': mle_config
+            }
+        print(f"MLE results: {mle_results['best_params']}")
+        print(f"Best log-likelihood: {-history['loss'][-1]}")
+        
+        # Save MLE results
+        np.savez(os.path.join(base_dir, "mle_results.npz"), **mle_results)
+        
+        # Convert MLE results to same format as MCMC samples for comparison
+        mle_dict = {}
+        for i in range(len(params_infos)):
+            for j, key in enumerate(params_infos[i]['changing_param_order']):
+                mle_dict[f'blob{i}_{key}'] = np.array([best_params[i, j]])
+        
+        np.savez(os.path.join(base_dir, "mle_point_estimate.npz"), **mle_dict)
+        
+        # Save true values for comparison
+        data_dict = {}
+        for i in range(len(params_infos)):
+            for j, key in enumerate(params_infos[i]['changing_param_order']):
+                data_dict[f'blob{i}_{key}'] = data_params[i, j]
+        
+        np.savez(os.path.join(base_dir, "truth.npz"), **data_dict)
+        
+        print(f"MLE results saved to {base_dir}")
+        print("MLE optimization completed.")
 
-    # Sampling initialization
-    rng_key = jax.random.PRNGKey(config.get("sampling_seed", 12345))
-    num_samples = config.get("num_samples", 1000)
-    from utils import sampling_params_init
-    init_params = sampling_params_init(params_infos, initial_position)
-
-    if config["sampler"] == "nuts":
-        from sampling import run_nuts
-        num_warmup = config.get("num_warmup", 1000)
-        print("Running NUTS sampler...")
-        print(f"Warmup steps: {num_warmup}")
-        print(f"Sampling steps: {num_samples}")
-        print(f"Initial position: {initial_position}")
-        samples = run_nuts(
-            log_posterior_fn,
-            init_params,
-            rng_key,
-            num_samples,
-            num_warmup
-        )
-    """
-    # Run the sampler
-    elif config["sampler"] == "hmc": #TO BE ADAPTED for warmup
-        from sampling import run_hmc
-        inv_mass_matrix = np.array(config["inv_mass_matrix"])
-        step_size = config.get("step_size", 1e-3)
-        num_integration_steps = config.get("num_integration_steps", 50)
-        num_warmup = config.get("num_warmup", 1000)
-        print("Running HMC sampler...")
-        print(f"HMC starting parameters: step_size={step_size}, num_integration_steps={num_integration_steps}")
-        print(f"Initial position: {initial_position}")
-        print("\n" + "STARTING SAMPLING PHASE")
-        sampling_start_time = time.time()
-        samples = run_hmc(log_posterior_fn, init_params, inv_mass_matrix, step_size, num_integration_steps, rng_key, num_samples, num_warmup)
-        sampling_end_time = time.time()
-        sampling_duration = sampling_end_time - sampling_start_time
-        print("SAMPLING PHASE COMPLETED")
-        print(f"Sampling duration: {sampling_duration:.2f} seconds")
-        print(f"Average time per sample: {sampling_duration/(num_samples+num_warmup):.4f} seconds")
-        print(f"Samples per second: {num_samples/sampling_duration:.2f}")
-
-    elif config["sampler"] == "rwm": #TO BE ADAPTED
-        print("Running Random Walk Metropolis sampler...")
-        from sampling import run_rwm
-        step_size = config.get("step_size", 0.1)
-        samples = run_rwm(
-            log_posterior,
-            initial_position,
-            step_size,
-            rng_key,
-            num_samples
-        )
-
-    elif config["sampler"] == "mala":
-        print("Running MALA sampler...")
-        from sampling import run_mala
-        step_size = config.get("step_size", 0.01)
-        num_warmup = config.get("num_warmup", 0)  
-        autotuning = config.get("autotuning", False)
-        samples = run_mala(
-            log_posterior,
-            initial_position,
-            step_size,
-            rng_key,
-            num_samples,
-            num_warmup=num_warmup,  
-            autotuning=autotuning
-        )
-
-    else:
-        raise ValueError("Unknown sampler: should be 'hmc', 'nuts', 'rwm', or 'mala'")
-    """
-    samples_dict = {}
-    for i in range(len(params_infos)):
-        for j, key in enumerate(params_infos[i]['changing_param_order']):
-            samples_dict[f'blob{i}_{key}'] = samples[:, i, j]  
-    np.savez(os.path.join(base_dir, "samples.npz"), **{k: np.array(v) for k, v in samples_dict.items()})
-    print(f"Results saved to {os.path.join(base_dir, 'samples.npz')}")
-    
-    data_dict = {} 
-    for i in range(len(params_infos)):
-        for j, key in enumerate(params_infos[i]['changing_param_order']):
-            data_dict[f'blob{i}_{key}'] = data_params[i, j]  
-    np.savez(os.path.join(base_dir, "truth.npz"), **{k: np.array(v) for k, v in data_dict.items()})
-    print(f"True values saved to {os.path.join(base_dir, 'truth.npz')}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run MCMC sampling for N-body initial distribution parameters inference")

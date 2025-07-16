@@ -1,0 +1,123 @@
+# Configuration for N-body parameter inference using blobs model
+
+# Use with : python src/run_experiments.py --config configs/defaults/nuts.yaml
+
+# --- HARDWARE/CLUSTER SETTINGS ---
+cuda_visible_devices: '0'  # GPU index to use
+
+# --- EXPERIMENT MODE and MISCELLANEOUS ---
+mode: sampling      # Experiment mode (options: "sim", "sampling")
+
+# --- PLOT & VIDEO SETTINGS ---
+plot_settings:
+  enable_energy_tracking: false  # Calculate and plot energy evolution
+  density_field_plot: 
+    do: true  # Plot density field
+  trajectories_plot: 
+    do: false  # Plot particle trajectories
+    num_trajectories: 10     # Number of particle trajectories to plot
+    zoom_for_trajectories: false  # Zoom in on trajectories
+  timeseries_plot: 
+    do: false  # Plot time series of particle positions
+    n_timesteps: 8        # Number of timesteps to plot
+  velocity_plot: 
+    do: true  
+  generate_video: 
+    do: false  # Generate video of the simulation
+    video_fps: 30            # Video frames per second
+    video_dpi: 200           # Video resolution DPI
+
+# --- FORWARD MODEL PARAMETERS ---
+model_params:  
+  # General parameters
+  G: 1              # Gravitational constant
+  length: 64          # Box size
+  softening: 1      # Softening length
+  t_f: 2.0            # Final time
+  dt: 0.01            # Time step
+  data_seed: 42       # Random seed for data generation
+  solver: "LeapfrogMidpoint" # Solver type: "LeapfrogMidpoint", "Dopri5", "Dopri8", "Tsit5", "Heun, "Midpoint"
+  
+  
+  # Density field scaling options
+  density_scaling: "log"  # Options: "none", "log", "sqrt", "power", "asinh", "signed_log"
+  velocity_scaling: "signed_log"  # Options: "none", "log", "sqrt", "power", "asinh", "signed_log"
+  
+  # Blob parameters - a list of blob configurations for generating mock data
+  blobs_params:
+    # Blob 1: Gaussian at corner 1 of triangle
+      - n_part: 2000
+        m_part: 6
+        pos_type: gaussian
+        pos_params:
+          sigma: 6.4  
+          center: [20.0, 20.0, 20.0]  
+        vel_type: circular
+        vel_params:
+          vel_factor: 0.05
+          distrib: True
+        # Blob 2: Gaussian at corner 2 of triangle
+      - n_part: 2000
+        m_part: 12
+        pos_type: gaussian
+        pos_params:
+          sigma: 9.6  
+          center: [38.0, 38.0, 38.0]  
+        vel_type: circular
+        vel_params:
+          vel_factor: 0.05 
+          distrib: True
+      
+
+# --- SAMPLER SETTINGS ---
+sampler: nuts           # No-U-Turn Sampler (NUTS)
+num_samples: 10        # Number of MCMC samples to draw
+sampling_seed: 12345    # Random seed for reproducibility
+
+# NUTS-specific parameters:
+num_warmup: 10         # Number of warmup steps for adaptation
+
+# Option 1: Let NUTS auto-adapt during warmup (recommended)
+# No additional parameters needed - step_size and mass matrix will be adapted
+
+# Option 2: Manual initial step size (will still be adapted)
+# initial_step_size: 0.01
+
+# Option 3: Custom adaptation settings
+# max_treedepth: 10           # Maximum tree depth (default: 10)
+# target_accept_stat: 0.8     # Target acceptance probability (default: 0.8)
+
+# Option 4: Custom mass matrix initialization
+# initial_mass_matrix: "identity"  # Options: "identity", "diagonal", or custom matrix
+
+
+# Initial position for the sampler - start with values different from the true ones
+# Option 1: Single initial position (will be automatically perturbed for multiple chains)
+initial_position: 
+  blob0_sigma: 6.8
+  blob0_center_x: 19.5
+  blob0_center_y: 20.3
+  blob0_center_z: 22.7
+  blob1_sigma: 10
+  blob1_center_x: 40.2
+  blob1_center_y: 36.8
+  blob1_center_z: 39.6
+  
+
+# --- LIKELIHOOD SETTINGS ---
+likelihood_type: ll1   # Options: "ll1", "ll2"
+likelihood_kwargs: 
+  noise: 1  # Standard deviation of instrumental noise
+
+# --- PRIOR SETTINGS ---
+prior_type: blob_gaussian  # Use blob-specific prior
+prior_params:
+  # Priors for the parameters we want to infer
+  blob0_sigma: {mu: 6.4, sigma: 3.0}
+  blob0_center_x: {mu: 20.0, sigma: 10.0}
+  blob0_center_y: {mu: 20.0, sigma: 10.0}
+  blob0_center_z: {mu: 20.0, sigma: 10.0}
+  blob1_sigma: {mu: 9.6, sigma: 4.0}
+  blob1_center_x: {mu: 38.0, sigma: 10.0}
+  blob1_center_y: {mu: 38.0, sigma: 10.0}
+  blob1_center_z: {mu: 38.0, sigma: 10.0}

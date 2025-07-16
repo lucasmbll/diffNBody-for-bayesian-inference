@@ -7,10 +7,16 @@ directories:
     - results/sampling_results/nuts_20250716_151521
     - results/sampling_results/nuts_20250716_151505
     - results/sampling_results/nuts_20250716_151438
+
 output_dir: "results/corner_plots"
 
 # Number of burn-in samples to discard (optional, can be overridden by command line)
 burnin: 0
+
+# Analysis parameters
+analysis:
+    # Interval for computing R-hat and ESS (every N samples)
+    n_samples_interval: 2
 
 # Optional: Add description for documentation
 description: "Analysis of NUTS sampling results from July 16, 2025"

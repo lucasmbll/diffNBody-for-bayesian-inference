@@ -72,6 +72,192 @@ def convert_to_chain_format(samples_list, param_order):
     
     return chain_samples, flattened_samples
 
+def compute_rhat(chain_samples, param_name, n_samples):
+    """
+    Compute R-hat for a parameter across multiple chains up to n_samples.
+    
+    Parameters:
+    -----------
+    chain_samples : dict
+        Dictionary with chain-separated samples
+    param_name : str
+        Parameter name to compute R-hat for
+    n_samples : int
+        Number of samples to use from each chain
+    
+    Returns:
+    --------
+    float : R-hat value
+    """
+    if param_name not in chain_samples:
+        return None
+    
+    chains = chain_samples[param_name][:, :n_samples]  # (n_chains, n_samples) or (n_chains, n_samples, n_dims)
+
+    n_chains, n_samples_actual = chains.shape
+    if n_chains < 2 or n_samples_actual < 2:
+        return None
+    
+    # Compute chain means and overall mean
+    chain_means = np.mean(chains, axis=1)
+    overall_mean = np.mean(chain_means)
+    
+    # Between-chain variance
+    B = n_samples_actual * np.var(chain_means, ddof=1)
+    
+    # Within-chain variance
+    chain_vars = np.var(chains, axis=1, ddof=1)
+    W = np.mean(chain_vars)
+    
+    # R-hat calculation
+    if W == 0:
+        return 1.0
+    
+    var_hat = ((n_samples_actual - 1) * W + B) / n_samples_actual
+    rhat = np.sqrt(var_hat / W)
+    
+    return rhat
+
+def compute_ess(samples):
+    """
+    Compute effective sample size for a single chain using autocorrelation.
+    
+    Parameters:
+    -----------
+    samples : array
+        1D array of samples
+    
+    Returns:
+    --------
+    float : ESS value
+    """
+    n = len(samples)
+    if n < 4:
+        return n
+    
+    # Center the samples
+    samples_centered = samples - np.mean(samples)
+    
+    # Compute autocorrelation using FFT
+    f_samples = np.fft.fft(samples_centered, n=2*n)
+    autocorr = np.fft.ifft(f_samples * np.conj(f_samples)).real
+    autocorr = autocorr[:n] / autocorr[0]  # Normalize
+    
+    # Find first negative autocorrelation or use cutoff
+    cutoff = min(n//4, 100)  # Reasonable cutoff
+    first_negative = np.where(autocorr < 0)[0]
+    if len(first_negative) > 0:
+        cutoff = min(cutoff, first_negative[0])
+    
+    # Compute integrated autocorrelation time
+    tau_int = 1 + 2 * np.sum(autocorr[1:cutoff])
+    tau_int = max(tau_int, 1.0)  # Ensure at least 1
+    
+    # ESS = N / (2 * tau_int)
+    ess = n / (2 * tau_int)
+    return max(ess, 1.0)
+
+def plot_rhat_analysis(chain_samples, param_order, n_samples_interval, output_dir):
+    """
+    Plot R-hat convergence analysis for multiple chains.
+    """
+    if len(next(iter(chain_samples.values()))) < 2:
+        print("R-hat analysis requires at least 2 chains. Skipping...")
+        return None
+    
+    max_samples = next(iter(chain_samples.values())).shape[1]
+    sample_points = np.arange(n_samples_interval, max_samples + 1, n_samples_interval)
+    
+    fig, axes = plt.subplots(len(param_order), 1, figsize=(10, 3 * len(param_order)), squeeze=False)
+    axes = axes.flatten()
+    
+    for idx, param_name in enumerate(param_order):
+        ax = axes[idx]
+        rhats = []
+        
+        for n_samples in sample_points:
+            rhat = compute_rhat(chain_samples, param_name, n_samples)
+            rhats.append(rhat)
+        
+        # Plot R-hat evolution
+        ax.plot(sample_points, rhats, 'b-', linewidth=2, label='R-hat')
+        
+        # Add reference lines
+        ax.axhline(y=1.0, color='green', linestyle='--', alpha=0.7, label='Perfect convergence')
+        ax.axhline(y=1.01, color='orange', linestyle='--', alpha=0.7, label='Excellent (< 1.01)')
+        ax.axhline(y=1.1, color='red', linestyle='--', alpha=0.7, label='Poor (> 1.1)')
+        
+        ax.set_xlabel('Number of samples')
+        ax.set_ylabel('R-hat')
+        ax.set_title(f'R-hat convergence: {param_name}')
+        ax.grid(True, alpha=0.3)
+        ax.legend()
+        ax.set_ylim(0.95, max(2.0, max(rhats) * 1.1) if rhats else 2.0)
+    
+    plt.suptitle('R-hat Convergence Analysis', fontsize=14)
+    plt.tight_layout()
+    
+    save_path = os.path.join(output_dir, "rhat_analysis.png")
+    fig.savefig(save_path, bbox_inches='tight', dpi=150)
+    print(f"R-hat analysis saved to: {save_path}")
+    
+    return fig
+
+def plot_ess_analysis(chain_samples, param_order, n_samples_interval, output_dir):
+    """
+    Plot ESS analysis for each chain.
+    """
+    max_samples = next(iter(chain_samples.values())).shape[1]
+    sample_points = np.arange(n_samples_interval, max_samples + 1, n_samples_interval)
+    n_chains = len(next(iter(chain_samples.values())))
+    
+    fig, axes = plt.subplots(len(param_order), 1, figsize=(10, 3 * len(param_order)), squeeze=False)
+    axes = axes.flatten()
+    
+    colors = plt.cm.tab10(np.linspace(0, 1, n_chains))
+    
+    for idx, param_name in enumerate(param_order):
+        ax = axes[idx]
+        
+        if param_name not in chain_samples:
+            continue
+            
+        chains = chain_samples[param_name]
+        
+        for chain_idx in range(n_chains):
+            ess_values = []
+            
+            for n_samples in sample_points:
+                # Get samples for this chain up to n_samples
+                if chains.ndim == 3:  # Vector parameter - use first component
+                    chain_data = chains[chain_idx, :n_samples, 0]
+                else:  # Scalar parameter
+                    chain_data = chains[chain_idx, :n_samples]
+                
+                ess = compute_ess(chain_data)
+                ess_values.append(ess)
+            
+            ax.plot(sample_points, ess_values, color=colors[chain_idx], 
+                   linewidth=2, label=f'Chain {chain_idx + 1}')
+        
+        # Add reference line (ideal ESS = number of samples)
+        ax.plot(sample_points, sample_points, 'k--', alpha=0.5, label='Ideal (ESS = N)')
+        
+        ax.set_xlabel('Number of samples')
+        ax.set_ylabel('Effective Sample Size')
+        ax.set_title(f'ESS Analysis: {param_name}')
+        ax.grid(True, alpha=0.3)
+        ax.legend()
+    
+    plt.suptitle('Effective Sample Size Analysis', fontsize=14)
+    plt.tight_layout()
+    
+    save_path = os.path.join(output_dir, "ess_analysis.png")
+    fig.savefig(save_path, bbox_inches='tight', dpi=150)
+    print(f"ESS analysis saved to: {save_path}")
+    
+    return fig
+
 def plot_multiple_chains(directories, output_dir, burnin=0):
     if output_dir is None:
         output_dir = "."
@@ -182,6 +368,23 @@ def plot_multiple_chains(directories, output_dir, burnin=0):
         print(f"Corner plot saved to: {corner_save_path}")
         plt.close(fig_corner)
     
+    # Get analysis parameters from config
+    analysis_params = reference_config.get('analysis', {})
+    n_samples_interval = analysis_params.get('n_samples_interval', 100)
+    
+    # Add R-hat analysis
+    if len(chain_labels) >= 2:
+        print("\nGenerating R-hat analysis...")
+        fig_rhat = plot_rhat_analysis(chain_samples, param_order, n_samples_interval, output_dir)
+        if fig_rhat is not None:
+            plt.close(fig_rhat)
+    
+    # Add ESS analysis
+    print("\nGenerating ESS analysis...")
+    fig_ess = plot_ess_analysis(chain_samples, param_order, n_samples_interval, output_dir)
+    if fig_ess is not None:
+        plt.close(fig_ess)
+    
     # Print summary statistics
     print("\nSummary:")
     print(f"Total chains: {len(chain_labels)}")
@@ -203,6 +406,8 @@ def main():
     This script processes multiple directories containing MCMC samples and generates:
     1. Trace plots showing parameter evolution over iterations
     2. Corner plots showing posterior distributions and correlations
+    3. R-hat convergence analysis
+    4. Effective Sample Size (ESS) analysis
     
     Expected directory structure for each input directory:
     - samples.npz: Contains MCMC samples for all parameters
