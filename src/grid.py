@@ -366,12 +366,13 @@ def values_slices(parameter_sets, log_posterior_values, log_lik_values, param_na
             print(f"No valid data for parameter {param_name}")
 
 def evaluate_gradients(parameter_sets, mini_batch_size, log_posterior_fn, log_prior_fn):
-    # Create value_and_grad function
+    # Create gradient functions
     posterior_grad_fn = jax.grad(log_posterior_fn)
     prior_grad_fn = jax.grad(log_prior_fn)
     
     # Vectorize the evaluation function over the batch dimension
     def evaluate_single_grad(params):
+        """Evaluate gradients for a single parameter set."""
         log_post_grad_val = posterior_grad_fn(params)
         log_prior_grad_val = prior_grad_fn(params)
         log_likelihood_grad_val = log_post_grad_val - log_prior_grad_val
@@ -406,66 +407,40 @@ def evaluate_gradients(parameter_sets, mini_batch_size, log_posterior_fn, log_pr
             # Process results and check for NaNs
             for i in range(batch_params.shape[0]):
                 total_evaluations += 1
-                post_grad_dict = {k: np.array(v[i]) for k, v in batch_log_post_grad_val.items()}
-                lik_grad_dict = {k: np.array(v[i]) for k, v in batch_log_likelihood_grad_val.items()}
+                post_grad_val = batch_log_post_grad_val[i]
+                lik_grad_val = batch_log_likelihood_grad_val[i]
                 
                 # Check for NaNs and Infs
-                log_post_is_nan = np.isnan(log_post_val)
-                log_post_is_inf = np.isinf(log_post_val)
-                log_lik_is_nan = np.isnan(log_lik_val)
-                log_lik_is_inf = np.isinf(log_lik_val)
-                post_grad_has_nan = any(np.any(np.isnan(grad)) for grad in post_grad)
-                post_grad_has_inf = any(np.any(np.isinf(grad)) for grad in post_grad_dict.values())
-                lik_grad_has_nan = any(np.any(np.isnan(grad)) for grad in lik_grad_dict.values())
-                lik_grad_has_inf = any(np.any(np.isinf(grad)) for grad in lik_grad_dict.values())
+                post_grad_has_nan = np.any(np.isnan(post_grad_val))
+                post_grad_has_inf = np.any(np.isinf(post_grad_val))
+                lik_grad_has_nan = np.any(np.isnan(lik_grad_val))
+                lik_grad_has_inf = np.any(np.isinf(lik_grad_val))
                 
-                if log_post_is_nan or log_lik_is_nan or post_grad_has_nan or lik_grad_has_nan:
+                if post_grad_has_nan or lik_grad_has_nan:
                     nan_count += 1
                     param_idx = start_idx + i
                     print(f"  NaN detected at parameter set {param_idx}:")
                     print(f"    Parameters: {parameter_sets[param_idx]}")
-                    print(f"    Log posterior NaN: {log_post_is_nan}")
-                    print(f"    Log likelihood NaN: {log_lik_is_nan}")
                     print(f"    Posterior gradient NaN: {post_grad_has_nan}")
                     print(f"    Likelihood gradient NaN: {lik_grad_has_nan}")
-                    if post_grad_has_nan:
-                        for k, v in post_grad_dict.items():
-                            if np.any(np.isnan(v)):
-                                print(f"      {k} posterior gradient has NaN: {v}")
-                    if lik_grad_has_nan:
-                        for k, v in lik_grad_dict.items():
-                            if np.any(np.isnan(v)):
-                                print(f"      {k} likelihood gradient has NaN: {v}")
-                
-                if log_post_is_inf or log_lik_is_inf or post_grad_has_inf or lik_grad_has_inf:
+                    
+                if post_grad_has_inf or lik_grad_has_inf:
                     inf_count += 1
                     param_idx = start_idx + i
                     print(f"  Inf detected at parameter set {param_idx}:")
                     print(f"    Parameters: {parameter_sets[param_idx]}")
-                    print(f"    Log posterior Inf: {log_post_is_inf} (value: {log_post_val})")
-                    print(f"    Log likelihood Inf: {log_lik_is_inf} (value: {log_lik_val})")
                     print(f"    Posterior gradient Inf: {post_grad_has_inf}")
                     print(f"    Likelihood gradient Inf: {lik_grad_has_inf}")
-                    if post_grad_has_inf:
-                        for k, v in post_grad_dict.items():
-                            if np.any(np.isinf(v)):
-                                print(f"      {k} posterior gradient has Inf: {v}")
-                    if lik_grad_has_inf:
-                        for k, v in lik_grad_dict.items():
-                            if np.any(np.isinf(v)):
-                                print(f"      {k} likelihood gradient has Inf: {v}")
                 
-                log_posterior_values.append(log_post_val)
-                posterior_gradient_values.append(post_grad_dict)
-                log_likelihood_values.append(log_lik_val)
-                likelihood_gradient_values.append(lik_grad_dict)
+                posterior_gradient_values.append(post_grad_val)
+                likelihood_gradient_values.append(lik_grad_val)
                 
         except Exception as batch_e:
             failed_batches += 1
             raise ValueError(f"Batch evaluation failed: {batch_e}.")
             
-    log_posterior_values = np.array(log_posterior_values)
-    log_lik_values = np.array(log_likelihood_values)
+    posterior_gradient_values = np.array(posterior_gradient_values)
+    likelihood_gradient_values = np.array(likelihood_gradient_values)
     
     # Print NaN/Inf summary
     print(f"\n=== NaN/Inf DETECTION SUMMARY ===")
@@ -489,10 +464,10 @@ def evaluate_gradients(parameter_sets, mini_batch_size, log_posterior_fn, log_pr
         print("  - Checking for parameter combinations that lead to singularities")
     
     # Create valid mask
-    valid_mask = ~(jnp.isnan(log_posterior_values) | jnp.isnan(log_lik_values) | jnp.isnan(posterior_gradient_values) |
-                   jnp.isnan(likelihood_gradient_values))
+    valid_mask = ~(np.any(np.isnan(posterior_gradient_values), axis=(1,2)) | 
+                   np.any(np.isnan(likelihood_gradient_values), axis=(1,2)))
     
-    n_valid_evaluations = jnp.sum(valid_mask)
+    n_valid_evaluations = np.sum(valid_mask)
     print(f"There are {n_valid_evaluations} valid evaluations...")
     
     if n_valid_evaluations == 0:
@@ -504,61 +479,11 @@ def evaluate_gradients(parameter_sets, mini_batch_size, log_posterior_fn, log_pr
         'nan_count': nan_count,
         'inf_count': inf_count,
         'failed_batches': failed_batches
-    }
-
-    # Calculate gradient norms and individual gradients
-    post_grad_norms = []
-    lik_grad_norms = []
-    post_individual_grads = {param: [] for param in param_names}
-    lik_individual_grads = {param: [] for param in param_names}
+    }    
     
-    # posterior gradient norms
-    for i, grad in enumerate(log_posterior_values):
-        if isinstance(grad_dict, dict):
-            total_grad_norm = 0.0
-            has_nan = False
-            for key, grad_val in grad_dict.items():
-                if isinstance(grad_val, (list, jnp.ndarray, np.ndarray)):
-                    if np.any(np.isnan(grad_val)):
-                        has_nan = True
-                        individual_grads[key].append(np.nan)
-                        break
-                    if 'center' in key.lower():
-                        grad_norm = float(jnp.linalg.norm(grad_val))
-                        individual_grads[key].append(grad_norm)
-                        total_grad_norm += float(jnp.sum(jnp.array(grad_val)**2))
-                    else:
-                        individual_grads[key].append(float(grad_val))
-                        total_grad_norm += float(grad_val**2)
-                else:
-                    if np.isnan(grad_val):
-                        has_nan = True
-                        individual_grads[key].append(np.nan)
-                        break
-                    individual_grads[key].append(float(grad_val))
-                    total_grad_norm += float(grad_val**2)
-            
-            if has_nan:
-                grad_norms.append(np.nan)
-            else:
-                grad_norms.append(np.sqrt(total_grad_norm))
-        else:
-            grad_norms.append(np.nan)
-            for key in param_names:
-                individual_grads[key].append(np.nan)
-    
-    grad_norms = np.array(grad_norms)
-    for key in individual_grads:
-        individual_grads[key] = np.array(individual_grads[key])
-    
-    return log_posterior_values, log_lik_values, posterior_gradient_values, likelihood_gradient_values, evaluation_stats, valid_mask
-    
+    return posterior_gradient_values, likelihood_gradient_values, evaluation_stats, valid_mask
 
-
-"""""
-
-
-def value_and_grad_surface(parameter_sets, log_posterior_values, log_lik_values, posterior_gradient_values, likelihood_gradient_values, param_names, valid_mask, output_dir):
+def quiver_grad_surface(parameter_sets, log_lik_values, posterior_gradient_values, likelihood_gradient_values, param_names, valid_mask, output_dir):
     n_params_per_blob = parameter_sets.shape[2]
     # Extract parameter values into arrays
     param_arrays = {}
@@ -572,55 +497,98 @@ def value_and_grad_surface(parameter_sets, log_posterior_values, log_lik_values,
     param_pairs = [(param_names[i], param_names[j]) for i in range(len(param_names)) 
                    for j in range(i+1, len(param_names))]
     
+    # Extract gradient components for each parameter
+    grad_arrays = {}
+    for idx, param_name in enumerate(param_names):
+        blob_idx = idx // n_params_per_blob
+        param_idx = idx % n_params_per_blob
+        # Extract gradient for this parameter from all parameter sets
+        grad_values = []
+        for i in range(len(parameter_sets)):
+            if valid_mask[i]:
+                grad_val = likelihood_gradient_values[i, blob_idx, param_idx]
+                grad_values.append(grad_val)
+            else:
+                grad_values.append(np.nan)
+        grad_arrays[param_name] = np.array(grad_values)
+
     for pair_idx, (param1, param2) in enumerate(param_pairs):
-        fig, axes = plt.subplots(1, 2, figsize=(15, 6))
-        fig.suptitle(f'Surfaces: {param1} vs {param2}', fontsize=14)
+        fig, ax = plt.subplots(1, 1, figsize=(12, 10))
+        fig.suptitle(f'Gradient Quiver Plot: {param1} vs {param2}', fontsize=16)
         
         # Get parameter grids
         p1_vals = param_arrays[param1][valid_mask]
         p2_vals = param_arrays[param2][valid_mask]
         like_vals = log_lik_values[valid_mask]
-        post_vals = log_posterior_values[valid_mask]
-        post_grad = posterior_gradient_values[valid_mask]
-        like_grad = likelihood_gradient_values[valid_mask]
         
-        # Create meshgrid for contour plots
+        # Get gradients for this parameter pair
+        grad1_vals = grad_arrays[param1][valid_mask]
+        grad2_vals = grad_arrays[param2][valid_mask]
+        
         try:
-            # Likelihood surface
-            ax = axes[0]
-            scatter1 = ax.tricontourf(p1_vals, p2_vals, like_vals, levels=20, cmap='plasma', alpha=0.8)
-            ax.scatter(p1_vals, p2_vals, c=like_vals, cmap='viridis', s=10, alpha=0.6)
-            ax.set_xlabel(param1)
-            ax.set_ylabel(param2)
-            ax.set_title('Likelihood Surface')
-            plt.colorbar(scatter1, ax=ax, label='Log Likelihood')
+            # Create background contour plot of likelihood
+            scatter = ax.tricontourf(p1_vals, p2_vals, like_vals, levels=20, cmap='plasma', alpha=0.6)
+            plt.colorbar(scatter, ax=ax, label='Log Likelihood')
             
-            # Posterior surface
-            ax = axes[1]
-            scatter2 = ax.tricontourf(p1_vals, p2_vals, post_vals, levels=20, cmap='plasma', alpha=0.8)
-            ax.scatter(p1_vals, p2_vals, c=post_vals, cmap='plasma', s=10, alpha=0.6)
+            # Create quiver plot of gradients
+            # Subsample points for cleaner visualization
+            n_points = len(p1_vals)
+            skip = max(1, n_points // 50)  # Show at most 50 arrows
+            
+            # Filter out NaN gradients
+            valid_grad_mask = ~(np.isnan(grad1_vals) | np.isnan(grad2_vals))
+            
+            if np.sum(valid_grad_mask) > 0:
+                p1_quiver = p1_vals[valid_grad_mask][::skip]
+                p2_quiver = p2_vals[valid_grad_mask][::skip]
+                grad1_quiver = grad1_vals[valid_grad_mask][::skip]
+                grad2_quiver = grad2_vals[valid_grad_mask][::skip]
+                
+                # Normalize gradients for better visualization
+                grad_magnitude = np.sqrt(grad1_quiver**2 + grad2_quiver**2)
+                max_grad = np.max(grad_magnitude)
+                
+                if max_grad > 0:
+                    scale_factor = 0.1 * (np.max(p1_vals) - np.min(p1_vals)) / max_grad
+                    
+                    quiver = ax.quiver(p1_quiver, p2_quiver, 
+                                        grad1_quiver, grad2_quiver,
+                                        grad_magnitude,
+                                        cmap='RdBu_r', alpha=0.8, 
+                                        scale=1/scale_factor, scale_units='xy',
+                                        angles='xy', width=0.003)
+                    
+                    # Add colorbar for gradient magnitude
+                    cbar = plt.colorbar(quiver, ax=ax, label='Gradient Magnitude', 
+                                        orientation='horizontal', pad=0.1, shrink=0.8)
+                else:
+                    ax.text(0.5, 0.5, 'All gradients are zero', 
+                            transform=ax.transAxes, ha='center', va='center')
+            else:
+                ax.text(0.5, 0.5, 'No valid gradients available', 
+                        transform=ax.transAxes, ha='center', va='center')
+            
             ax.set_xlabel(param1)
             ax.set_ylabel(param2)
-            ax.set_title('Posterior Surface')
-            plt.colorbar(scatter2, ax=ax, label='Log Posterior')
+            ax.set_title(f'Likelihood Surface with Gradient Field')
             
         except Exception as e:
-            print(f"Warning: Could not create surface plot for {param1} vs {param2}: {e}")
-            for ax in axes:
-                ax.text(0.5, 0.5, f'Surface plot failed:\n{str(e)}', 
-                       transform=ax.transAxes, ha='center', va='center')
+            print(f"Warning: Could not create quiver plot for {param1} vs {param2}: {e}")
+            ax.text(0.5, 0.5, f'Quiver plot failed:\n{str(e)}', 
+                    transform=ax.transAxes, ha='center', va='center')
         
+        fig_name = f'gradient_quiver_{param1}_vs_{param2}.png'
+        dir = os.path.join(output_dir, fig_name)
         plt.tight_layout()
-        plt.savefig(output_dir / f'surfaces_{param1}_vs_{param2}.png', dpi=300, bbox_inches='tight')
+        plt.savefig(dir, dpi=300, bbox_inches='tight')
         plt.close()
 
-"""""
 
 
-   
 
+"""  
 def create_comprehensive_analysis(parameter_sets, log_posterior_values, gradient_values, param_names, config, evaluation_stats):
-    """Create comprehensive parameter analysis plots."""
+    
     import datetime
     
     # Create timestamped output directory
@@ -1111,4 +1079,4 @@ def main():
     print("Creating comprehensive analysis...")
     create_comprehensive_analysis(parameter_sets, log_posterior_values, gradient_values, param_names, config, evaluation_stats)
     
-    print("Gradient sanity check completed!")
+    print("Gradient sanity check completed!")"""

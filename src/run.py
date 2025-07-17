@@ -245,7 +245,7 @@ def main(config_path):
     if mode in ["sampling", "grid"]:
         # Prior 
         from utils import prior_params_extract
-        prior_params_array = prior_params_extract(prior_type, prior_params, params_infos)
+        prior_params_array, params_labels = prior_params_extract(prior_type, prior_params, params_infos)
         from likelihood import log_prior
         log_prior_fn = lambda params: log_prior(params, prior_type, prior_params_array)
 
@@ -353,7 +353,6 @@ def main(config_path):
         n_points_per_dim = hypercube_params.get("n_points_per_dim", 10)
         param_bounds = hypercube_params.get("param_bounds", {})
         mini_batch_size = config['hypercube_params'].get('mini_batch_size', 50)
-        param_names = list(prior_params.keys())
         # Create parameter grid
         print("Creating parameter grid for hypercube search...")
         parameter_sets = create_parameter_grid(
@@ -368,10 +367,10 @@ def main(config_path):
         
         # Plotting
         print("Creating likelihood and posterior values marginal surfaces...")
-        value_surface(parameter_sets, log_posterior_values, log_lik_values, param_names, valid_mask, base_dir)
+        value_surface(parameter_sets, log_posterior_values, log_lik_values, params_labels, valid_mask, base_dir)
 
         print("Creating 1D likelihood and posterior values marginal slices")
-        values_slices(parameter_sets, log_posterior_values, log_lik_values, param_names, valid_mask, base_dir)
+        values_slices(parameter_sets, log_posterior_values, log_lik_values, params_labels, valid_mask, base_dir)
         return
 
     

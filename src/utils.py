@@ -410,6 +410,7 @@ def params_init(params_infos, initial_position):
 def prior_params_extract(prior_type, prior_params, params_infos):
     """Extract prior parameters from prior_params dict based on params_infos"""
     all_prior_params = []
+    params_labels = []
     n_blobs = len(params_infos)
     params_order = params_infos[0]['changing_param_order']
     for blob_idx in range(n_blobs):
@@ -417,6 +418,7 @@ def prior_params_extract(prior_type, prior_params, params_infos):
         for param_name in params_order:
             # Check if the parameter exists in initial_position
             if f"blob{blob_idx}_{param_name}" in prior_params:
+                params_labels.append(f"blob{blob_idx}_{param_name}")
                 if prior_type == "blob_gaussian":
                     # For Gaussian priors, we expect a dict with 'mu' and 'sigma'
                     if isinstance(prior_params[f"blob{blob_idx}_{param_name}"], dict):
@@ -434,7 +436,7 @@ def prior_params_extract(prior_type, prior_params, params_infos):
             else:
                 raise ValueError(f"Parameter blob{blob_idx}_{param_name} not found in initial_position.")
         all_prior_params.append(jnp.array(blob_prior_params, dtype=jnp.float32))
-    return jnp.stack(all_prior_params) 
+    return jnp.stack(all_prior_params), jnp.array(params_labels, dtype=jnp.str_)
 
 
     ## TO BE CHECKED 
