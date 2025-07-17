@@ -4,6 +4,7 @@ import numpy as np
 import yaml
 import matplotlib.pyplot as plt
 import corner
+from datetime import datetime
 
 def load_samples_from_directory(directory):
     samples_path = os.path.join(directory, "samples.npz")
@@ -259,11 +260,6 @@ def plot_ess_analysis(chain_samples, param_order, n_samples_interval, output_dir
     return fig
 
 def plot_multiple_chains(directories, output_dir, burnin=0):
-    if output_dir is None:
-        output_dir = "."
-    
-    os.makedirs(output_dir, exist_ok=True)
-    
     # Load data from all directories
     all_data = []
     chain_labels = []
@@ -316,6 +312,14 @@ def plot_multiple_chains(directories, output_dir, burnin=0):
     
     # Determine method from config
     method = reference_config.get('sampler')
+
+    # Output directory
+    if output_dir is None:
+        output_dir = "."
+    current_date = datetime.now().strftime("%Y%m%d_%H%M%S")
+    subfolder_name = f"analysis_{method}_{current_date}"
+    output_dir = os.path.join(output_dir, subfolder_name)
+    os.makedirs(output_dir, exist_ok=True)
     
     print(f"\nPlotting parameters: {param_order}")
     print(f"Number of chains: {len(chain_labels)}")

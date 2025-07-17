@@ -30,14 +30,16 @@ def main(config_path):
     mode = config.get("mode")
     if mode is None:
         raise ValueError("Please specify the mode in the configuration file under 'mode' key : 'sim' or 'sampling'.")
-    if mode not in ["sim", "sampling", "mle"]:
-        raise ValueError(f"Invalid mode: {mode}. Must be either 'sim', 'sampling', or 'mle'.")
+    if mode not in ["sim", "sampling", "mle", "grid"]:
+        raise ValueError(f"Invalid mode: {mode}. Must be either 'sim', 'sampling', 'mle', or 'grid'.")
 
     # --- Output directory ---
     now_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     config_base = os.path.splitext(os.path.basename(config_path))[0]
     if mode == "sampling":
         base_dir = os.path.join("results", "sampling_results", f"{config_base}_{now_str}")
+    elif mode == "grid":
+        base_dir = os.path.join("results", "grid_results", f"{config_base}_{now_str}")
     else:  # mode == "sim"
         base_dir = os.path.join("results", "nbody_sim_results", f"{config_base}_{now_str}")
     os.makedirs(base_dir, exist_ok=True)
@@ -74,6 +76,13 @@ def main(config_path):
         prior_params = config.get("prior_params", None)
         if prior_params is None or prior_type is None:
             raise ValueError("No prior specified in config file. Please provide 'prior_params' and 'prior_type' in your configuration.")
+    elif mode == "grid":
+        initial_position = None
+        prior_type = config.get("prior_type", None)
+        prior_params = config.get("prior_params", None)
+        if prior_params is None or prior_type is None:
+            raise ValueError("No prior specified in config file. Please provide 'prior_params' and 'prior_type' in your configuration.")
+        
     elif mode == "mle":
         initial_position = config.get("initial_position", None)
         if initial_position is None:
@@ -230,10 +239,24 @@ def main(config_path):
     likelihood_type = config.get("likelihood_type", None)
     likelihood_kwargs = config.get("likelihood_kwargs", {})
     noise = likelihood_kwargs.get("noise", 1.0)
+    from likelihood import log_likelihood_1
+    log_likelihood_fn = lambda params: log_likelihood_1(params, data, noise, model_fn, data_key)
+
+    if mode in ["sampling", "grid"]:
+        # Prior 
+        from utils import prior_params_extract
+        prior_params_array = prior_params_extract(prior_type, prior_params, params_infos)
+        from likelihood import log_prior
+        log_prior_fn = lambda params: log_prior(params, prior_type, prior_params_array)
+
+        # Posterior
+        from likelihood import log_posterior
+        log_posterior_fn = lambda params: log_posterior(params, log_likelihood_fn, log_prior_fn)
 
     # Initial parameters for sampling or MLE
-    from utils import sampling_params_init
-    init_params = sampling_params_init(params_infos, initial_position)
+    if mode in ["sampling", "mle"]:
+        from utils import params_init
+        init_params = params_init(params_infos, initial_position)
 
     if likelihood_type is None:
         raise ValueError("No likelihood type specified in config file. Please provide 'likelihood_type' in your configuration.")
@@ -241,16 +264,6 @@ def main(config_path):
     
     if mode == "sampling":
         print('Starting sampling process...')
-
-        # Prior 
-        from utils import prior_params_extract
-        prior_params_array = prior_params_extract(prior_type, prior_params, params_infos)
-
-        # --- SAMPLING ---   
-        from likelihood import log_posterior
-        # Posterior
-        log_posterior_fn = lambda params: log_posterior(params, likelihood_type, data, model_fn, data_key, prior_params_array, prior_type, noise)
-
         # Sampling initialization
         rng_key = jax.random.PRNGKey(config.get("sampling_seed", 12345))
         num_samples = config.get("num_samples", 1000)
@@ -332,14 +345,39 @@ def main(config_path):
         print(f"True values saved to {os.path.join(base_dir, 'truth.npz')}")
         return
     
+    elif mode == "grid":
+        print("Starting grid search...")
+        from grid import create_parameter_grid, evaluate_likelihood, value_surface, values_slices
+        # Extract hypercube parameters
+        hypercube_params = config.get("hypercube_params", {})
+        n_points_per_dim = hypercube_params.get("n_points_per_dim", 10)
+        param_bounds = hypercube_params.get("param_bounds", {})
+        mini_batch_size = config['hypercube_params'].get('mini_batch_size', 50)
+        param_names = list(prior_params.keys())
+        # Create parameter grid
+        print("Creating parameter grid for hypercube search...")
+        parameter_sets = create_parameter_grid(
+            n_points_per_dim=n_points_per_dim,
+            param_bounds=param_bounds,
+            params_infos=params_infos
+        )
+        
+        # Evaluate likelihood and gradients on the grid
+        print(f"Evaluating likelihood and gradients for {len(parameter_sets)} parameter sets using mini-batch computation...")
+        log_posterior_values, log_lik_values, evaluation_stats, valid_mask = evaluate_likelihood(parameter_sets, mini_batch_size, log_posterior_fn, log_prior_fn)
+        
+        # Plotting
+        print("Creating likelihood and posterior values marginal surfaces...")
+        value_surface(parameter_sets, log_posterior_values, log_lik_values, param_names, valid_mask, base_dir)
+
+        print("Creating 1D likelihood and posterior values marginal slices")
+        values_slices(parameter_sets, log_posterior_values, log_lik_values, param_names, valid_mask, base_dir)
+        return
+
+    
     else:  # mode == "mle"
         # --- MLE OPTIMIZATION ---
         print("Starting MLE optimization...")
-        
-        from likelihood import log_likelihood_1
-        # For MLE, we only need the likelihood (no prior)
-        log_likelihood_fn = lambda params: log_likelihood_1(params, data, noise, model_fn, data_key)
-        
         # MLE configuration
         mle_config = config.get("mle", {})
         optimizer_name = mle_config.get("optimizer", "adam")

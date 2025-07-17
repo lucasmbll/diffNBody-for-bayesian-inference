@@ -104,7 +104,7 @@ def extract_blob_parameters(blob_config, mode, infered_params):
     
     if pos_type == 'gaussian':
         # Handle center
-        if mode in ['sampling', 'mle'] and 'center' in infered_params :
+        if mode in ['sampling', 'mle', 'grid'] and 'center' in infered_params :
                 changing_params.extend(pos_params['center'])
                 param_info['changing_param_order'].extend(['center_x', 'center_y', 'center_z'])
         else:
@@ -112,7 +112,7 @@ def extract_blob_parameters(blob_config, mode, infered_params):
             param_info['fixed_param_order'].extend(['center_x', 'center_y', 'center_z'])
             
         # Handle sigma
-        if mode in ['sampling', 'mle'] and 'sigma' in infered_params:
+        if mode in ['sampling', 'mle', 'grid'] and 'sigma' in infered_params:
                 changing_params.append(pos_params['sigma'])
                 param_info['changing_param_order'].append('sigma')
         else:
@@ -121,14 +121,14 @@ def extract_blob_parameters(blob_config, mode, infered_params):
     
     elif pos_type == 'nfw':
         # Handle scale radius and concentration
-        if mode in ['sampling', 'mle'] and 'rs' in infered_params:
+        if mode in ['sampling', 'mle', 'grid'] and 'rs' in infered_params:
                 changing_params.append(pos_params['rs'])
                 param_info['changing_param_order'].append('rs')
         else:
             fixed_params.append(pos_params['rs'])
             param_info['fixed_param_order'].append('rs')
 
-        if mode in ['sampling', 'mle'] and 'c' in infered_params:
+        if mode in ['sampling', 'mle', 'grid'] and 'c' in infered_params:
                 changing_params.append(pos_params['c'])
                 param_info['changing_param_order'].append('c')
         else:
@@ -136,7 +136,7 @@ def extract_blob_parameters(blob_config, mode, infered_params):
             param_info['fixed_param_order'].append('c')
         
         # Handle center
-        if mode in ['sampling', 'mle'] and 'center' in infered_params:
+        if mode in ['sampling', 'mle', 'grid'] and 'center' in infered_params:
                 changing_params.extend(pos_params['center'])
                 param_info['changing_param_order'].extend(['center_x', 'center_y', 'center_z'])
         else:
@@ -145,7 +145,7 @@ def extract_blob_parameters(blob_config, mode, infered_params):
 
     elif pos_type == 'plummer':
         # Handle scale radius
-        if mode in ['sampling', 'mle'] and 'rs' in infered_params:
+        if mode in ['sampling', 'mle', 'grid'] and 'rs' in infered_params:
                 changing_params.append(pos_params['rs'])
                 param_info['changing_param_order'].append('rs')
         else:
@@ -153,7 +153,7 @@ def extract_blob_parameters(blob_config, mode, infered_params):
             param_info['fixed_param_order'].append('rs')
         
         # Handle center
-        if mode in ['sampling', 'mle'] and 'center' in infered_params:
+        if mode in ['sampling', 'mle', 'grid'] and 'center' in infered_params:
                 changing_params.extend(pos_params['center'])
                 param_info['changing_param_order'].extend(['center_x', 'center_y', 'center_z'])
         else:
@@ -166,7 +166,7 @@ def extract_blob_parameters(blob_config, mode, infered_params):
     other_params['vel_type'] = vel_type
     
     if vel_type == 'circular':
-        if mode in ['sampling', 'mle'] and 'vel_factor' in infered_params:
+        if mode in ['sampling', 'mle', 'grid'] and 'vel_factor' in infered_params:
                 changing_params.append(vel_params['vel_factor'])
                 param_info['changing_param_order'].append('vel_factor')
         else:
@@ -193,6 +193,8 @@ def blobs_params_init(blobs_params, prior_params, initial_position, mode):
             infered_params = extract_params_to_infer(blob, blob_idx, prior_params, initial_position)
         elif mode == 'mle':
             infered_params = extract_params_to_optimize(blob, blob_idx, initial_position)
+        elif mode == 'grid': 
+            infered_params = extract_params_to_evaluate(blob, blob_idx, prior_params)
         else:
             infered_params = None
         params, fixed, others, info = extract_blob_parameters(blob, mode, infered_params)
@@ -274,6 +276,63 @@ def extract_params_to_infer(blob, blob_idx, prior_params, initial_position):
     
     return list(params_to_infer)
 
+def extract_params_to_evaluate(blob, blob_idx, prior_params):
+    # Initialize set for parameters to infer
+    params_to_infer = set()
+    
+    # Position parameters
+    if blob['pos_type'] == 'gaussian':
+        sigma_key = f"blob{blob_idx}_sigma"
+        center_key = f"blob{blob_idx}_center_x"
+        
+        if (sigma_key in prior_params):
+            params_to_infer.add('sigma')
+            
+        if (center_key in prior_params):
+            params_to_infer.add('center')
+            
+    elif blob['pos_type'] == 'nfw':
+        rs_key = f"blob{blob_idx}_rs"
+        c_key = f"blob{blob_idx}_c"
+        center_key = f"blob{blob_idx}_center_x"
+        
+        if (rs_key in prior_params):
+            params_to_infer.add('rs')
+            
+        if (c_key in prior_params):
+            params_to_infer.add('c')
+            
+        if (center_key in prior_params):
+            params_to_infer.add('center')
+            
+    elif blob['pos_type'] == 'plummer':
+        rs_key = f"blob{blob_idx}_rs"
+        center_key = f"blob{blob_idx}_center_x"
+        
+        if (rs_key in prior_params):
+            params_to_infer.add('rs')
+            
+        if (center_key in prior_params):
+            params_to_infer.add('center')
+    
+    # Velocity parameters
+    if blob['vel_type'] == 'circular':
+        vel_key = f"blob{blob_idx}_vel_factor"
+        if (vel_key in prior_params):
+            params_to_infer.add('vel_factor')
+            
+    elif blob['vel_type'] == 'cold':
+        vel_key = f"blob{blob_idx}_vel_dispersion"
+        if (vel_key in prior_params):
+            params_to_infer.add('vel_dispersion')
+            
+    elif blob['vel_type'] == 'virial':
+        vel_key = f"blob{blob_idx}_virial_ratio"
+        if (vel_key in prior_params):
+            params_to_infer.add('virial_ratio')
+    
+    return list(params_to_infer)
+
 def extract_params_to_optimize(blob, blob_idx, initial_position):
     # Initialize set for parameters to infer
     params_to_infer = set()
@@ -331,7 +390,7 @@ def extract_params_to_optimize(blob, blob_idx, initial_position):
     
     return list(params_to_infer)
 
-def sampling_params_init(params_infos, initial_position):
+def params_init(params_infos, initial_position):
     """Initialize sampling parameters array from initial positions in config"""
     all_initial_params = []
     n_blobs = len(params_infos)

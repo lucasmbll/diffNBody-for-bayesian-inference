@@ -2,12 +2,8 @@
 # Use with: python src/corner_plots.py configs/corner_plots/analysis_config.yaml
 # List of directories containing MCMC samples
 directories:
-    - results/sampling_results/nuts_20250716_151712
-    - results/sampling_results/nuts_20250716_151618
-    - results/sampling_results/nuts_20250716_151521
-    - results/sampling_results/nuts_20250716_151505
-    - results/sampling_results/nuts_20250716_151438
-
+    - results/sampling_results/rwm_chain1_20250717_020608
+   
 output_dir: "results/corner_plots"
 
 # Number of burn-in samples to discard (optional, can be overridden by command line)
