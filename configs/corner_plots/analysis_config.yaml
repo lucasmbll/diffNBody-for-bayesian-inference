@@ -1,8 +1,9 @@
 # Configuration file for corner plots analysis
-# Use with: python src/corner_plots.py configs/corner_plots/analysis_config.yaml
+# Use with: python src/sampling_plots.py configs/corner_plots/analysis_config.yaml
 # List of directories containing MCMC samples
 directories:
     - results/sampling_results/rwm_chain1_20250717_020608
+    - results/sampling_results/rwm_chain2_20250717_095957
    
 output_dir: "results/corner_plots"
 

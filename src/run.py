@@ -347,12 +347,13 @@ def main(config_path):
     
     elif mode == "grid":
         print("Starting grid search...")
-        from grid import create_parameter_grid, evaluate_likelihood, value_surface, values_slices
+        from grid import create_parameter_grid, evaluate_likelihood, evaluate_gradients, value_surface, values_slices, quiver_grad_surface
         # Extract hypercube parameters
         hypercube_params = config.get("hypercube_params", {})
         n_points_per_dim = hypercube_params.get("n_points_per_dim", 10)
         param_bounds = hypercube_params.get("param_bounds", {})
-        mini_batch_size = config['hypercube_params'].get('mini_batch_size', 50)
+        mini_batch_size_value = config['hypercube_params'].get('mini_batch_size_value', 50)
+        mini_batch_size_grad = config['hypercube_params'].get('mini_batch_size_grad', 50)
         # Create parameter grid
         print("Creating parameter grid for hypercube search...")
         parameter_sets = create_parameter_grid(
@@ -362,18 +363,44 @@ def main(config_path):
         )
         
         # Evaluate likelihood and gradients on the grid
-        print(f"Evaluating likelihood and gradients for {len(parameter_sets)} parameter sets using mini-batch computation...")
-        log_posterior_values, log_lik_values, evaluation_stats, valid_mask = evaluate_likelihood(parameter_sets, mini_batch_size, log_posterior_fn, log_prior_fn)
-        
+        print(f"Evaluating likelihood for {len(parameter_sets)} parameter sets using mini-batch computation...")
+        log_posterior_values, log_lik_values, evaluation_stats, valid_mask = evaluate_likelihood(parameter_sets, mini_batch_size_value, log_posterior_fn, log_prior_fn)
+
         # Plotting
         print("Creating likelihood and posterior values marginal surfaces...")
-        value_surface(parameter_sets, log_posterior_values, log_lik_values, params_labels, valid_mask, base_dir)
+        value_surface(data_params, parameter_sets, log_posterior_values, log_lik_values, params_labels, valid_mask, base_dir)
 
         print("Creating 1D likelihood and posterior values marginal slices")
-        values_slices(parameter_sets, log_posterior_values, log_lik_values, params_labels, valid_mask, base_dir)
-        return
+        values_slices(data_params, parameter_sets, log_posterior_values, log_lik_values, params_labels, valid_mask, base_dir)
+       
+       
+        if len(parameter_sets) < 50000:
+            print(f"Evaluating gradients for {len(parameter_sets)} parameter sets using mini-batch computation...")
+            posterior_gradient_values, likelihood_gradient_values, evaluation_stats_grad, valid_mask_grad = evaluate_gradients(parameter_sets, mini_batch_size_grad, log_posterior_fn, log_prior_fn)
 
+            print("Creating quiver plot of gradients on the parameter surface...")
+            quiver_grad_surface(parameter_sets, log_lik_values, log_posterior_values, likelihood_gradient_values, posterior_gradient_values, params_labels, valid_mask_grad, base_dir)
+        
+        else:
+            print(f"Skipping gradient evaluation and quiver plot for {len(parameter_sets)} parameter sets (too many points).")
+
+         # Parameter statistics
+        if np.sum(valid_mask) > 0:
+            print("=== BEST PARAMETERS ON THE GRID ===\n")
+            # Best point
+            best_idx = jnp.argmax(log_posterior_values[valid_mask])
+            best_point_global = np.where(valid_mask)[0][best_idx]
+            print("=== BEST PARAMETER POINT ===\n")
+            print(f"Best posterior value: {log_posterior_values[best_point_global]:.6f}\n")
+            print(f"Best likelihood value: {log_lik_values[best_point_global]:.6f}\n")
+            print("Best parameters: \n")
+            best_params = parameter_sets[best_point_global]
+            for i in range(len(params_infos)):
+                for j, key in enumerate(params_infos[i]['changing_param_order']):
+                    print(f"blob{i}_{key}: {best_params[i, j]:.6f}\n")
+        return
     
+
     else:  # mode == "mle"
         # --- MLE OPTIMIZATION ---
         print("Starting MLE optimization...")

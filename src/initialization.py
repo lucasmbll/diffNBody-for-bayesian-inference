@@ -163,10 +163,23 @@ def initialize_blob(params_blob, fixed_params_blob, other_params_blob, params_in
     fixed_param_order = params_infos_blob['fixed_param_order']
     changing_param_order = params_infos_blob['changing_param_order']
     
-    if 'center_x' in changing_param_order:
+    # Extract center coordinates
+    if 'center' in changing_param_order:
+        # Single scalar format
+        center_idx = changing_param_order.index('center')
+        center_scalar = params_blob[center_idx]
+        center = jnp.array([center_scalar, center_scalar, center_scalar])
+    elif 'center_x' in changing_param_order:
+        # Traditional 3D format
         center_x_idx = changing_param_order.index('center_x')
         center = params_blob[center_x_idx:center_x_idx+3]
+    elif 'center' in fixed_param_order:
+        # Single scalar format (fixed)
+        center_idx = fixed_param_order.index('center')
+        center_scalar = fixed_params_blob[center_idx]
+        center = jnp.array([center_scalar, center_scalar, center_scalar])
     else:
+        # Traditional 3D format (fixed)
         center_x_idx = fixed_param_order.index('center_x')
         center = fixed_params_blob[center_x_idx:center_x_idx+3]
     if 'm_part' in fixed_param_order:

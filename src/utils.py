@@ -103,13 +103,25 @@ def extract_blob_parameters(blob_config, mode, infered_params):
     other_params['pos_type'] = pos_type
     
     if pos_type == 'gaussian':
-        # Handle center
-        if mode in ['sampling', 'mle', 'grid'] and 'center' in infered_params :
-                changing_params.extend(pos_params['center'])
+        # Handle center - support both single scalar and 3D coordinate
+        if mode in ['sampling', 'mle', 'grid'] and 'center' in infered_params:
+            center_param = pos_params['center']
+            if isinstance(center_param, (list, tuple)) and len(center_param) == 3:
+                # Traditional 3D format: [x, y, z]
+                changing_params.extend(center_param)
                 param_info['changing_param_order'].extend(['center_x', 'center_y', 'center_z'])
+            else:
+                # Single scalar format: X -> [X, X, X]
+                changing_params.append(center_param)
+                param_info['changing_param_order'].append('center')
         else:
-            fixed_params.extend(pos_params['center'])
-            param_info['fixed_param_order'].extend(['center_x', 'center_y', 'center_z'])
+            center_param = pos_params['center']
+            if isinstance(center_param, (list, tuple)) and len(center_param) == 3:
+                fixed_params.extend(center_param)
+                param_info['fixed_param_order'].extend(['center_x', 'center_y', 'center_z'])
+            else:
+                fixed_params.append(center_param)
+                param_info['fixed_param_order'].append('center')
             
         # Handle sigma
         if mode in ['sampling', 'mle', 'grid'] and 'sigma' in infered_params:
@@ -135,13 +147,25 @@ def extract_blob_parameters(blob_config, mode, infered_params):
             fixed_params.append(pos_params['c'])
             param_info['fixed_param_order'].append('c')
         
-        # Handle center
+        # Handle center - support both single scalar and 3D coordinate
         if mode in ['sampling', 'mle', 'grid'] and 'center' in infered_params:
-                changing_params.extend(pos_params['center'])
+            center_param = pos_params['center']
+            if isinstance(center_param, (list, tuple)) and len(center_param) == 3:
+                # Traditional 3D format: [x, y, z]
+                changing_params.extend(center_param)
                 param_info['changing_param_order'].extend(['center_x', 'center_y', 'center_z'])
+            else:
+                # Single scalar format: X -> [X, X, X]
+                changing_params.append(center_param)
+                param_info['changing_param_order'].append('center')
         else:
-            fixed_params.extend(pos_params['center'])
-            param_info['fixed_param_order'].extend(['center_x', 'center_y', 'center_z'])
+            center_param = pos_params['center']
+            if isinstance(center_param, (list, tuple)) and len(center_param) == 3:
+                fixed_params.extend(center_param)
+                param_info['fixed_param_order'].extend(['center_x', 'center_y', 'center_z'])
+            else:
+                fixed_params.append(center_param)
+                param_info['fixed_param_order'].append('center')
 
     elif pos_type == 'plummer':
         # Handle scale radius
@@ -152,13 +176,25 @@ def extract_blob_parameters(blob_config, mode, infered_params):
             fixed_params.append(pos_params['rs'])
             param_info['fixed_param_order'].append('rs')
         
-        # Handle center
+        # Handle center - support both single scalar and 3D coordinate
         if mode in ['sampling', 'mle', 'grid'] and 'center' in infered_params:
-                changing_params.extend(pos_params['center'])
+            center_param = pos_params['center']
+            if isinstance(center_param, (list, tuple)) and len(center_param) == 3:
+                # Traditional 3D format: [x, y, z]
+                changing_params.extend(center_param)
                 param_info['changing_param_order'].extend(['center_x', 'center_y', 'center_z'])
+            else:
+                # Single scalar format: X -> [X, X, X]
+                changing_params.append(center_param)
+                param_info['changing_param_order'].append('center')
         else:
-            fixed_params.extend(pos_params['center'])
-            param_info['fixed_param_order'].extend(['center_x', 'center_y', 'center_z'])
+            center_param = pos_params['center']
+            if isinstance(center_param, (list, tuple)) and len(center_param) == 3:
+                fixed_params.extend(center_param)
+                param_info['fixed_param_order'].extend(['center_x', 'center_y', 'center_z'])
+            else:
+                fixed_params.append(center_param)
+                param_info['fixed_param_order'].append('center')
     
     # Process velocity parameters
     vel_params = blob_config['vel_params']
@@ -216,20 +252,24 @@ def extract_params_to_infer(blob, blob_idx, prior_params, initial_position):
     # Position parameters
     if blob['pos_type'] == 'gaussian':
         sigma_key = f"blob{blob_idx}_sigma"
-        center_key = f"blob{blob_idx}_center_x"
+        center_key = f"blob{blob_idx}_center"  # Check single scalar first
+        center_x_key = f"blob{blob_idx}_center_x"  # Then check 3D format
         
-        if (sigma_key in prior_params and 
-            sigma_key in initial_position):
+        if (sigma_key in prior_params and sigma_key in initial_position):
             params_to_infer.add('sigma')
-            
-        if (center_key in prior_params and 
-            center_key in initial_position):
+        
+        # Check for single scalar center parameter
+        if (center_key in prior_params and center_key in initial_position):
+            params_to_infer.add('center')
+        # Check for 3D center parameter
+        elif (center_x_key in prior_params and center_x_key in initial_position):
             params_to_infer.add('center')
             
     elif blob['pos_type'] == 'nfw':
         rs_key = f"blob{blob_idx}_rs"
         c_key = f"blob{blob_idx}_c"
-        center_key = f"blob{blob_idx}_center_x"
+        center_key = f"blob{blob_idx}_center"  # Check single scalar first
+        center_x_key = f"blob{blob_idx}_center_x"
         
         if (rs_key in prior_params and 
             rs_key in initial_position):
@@ -239,20 +279,27 @@ def extract_params_to_infer(blob, blob_idx, prior_params, initial_position):
             c_key in initial_position):
             params_to_infer.add('c')
             
-        if (center_key in prior_params and 
-            center_key in initial_position):
+        # Check for single scalar center parameter
+        if (center_key in prior_params and center_key in initial_position):
+            params_to_infer.add('center')
+        # Check for 3D center parameter
+        elif (center_x_key in prior_params and center_x_key in initial_position):
             params_to_infer.add('center')
             
     elif blob['pos_type'] == 'plummer':
         rs_key = f"blob{blob_idx}_rs"
-        center_key = f"blob{blob_idx}_center_x"
+        center_key = f"blob{blob_idx}_center"  # Check single scalar first
+        center_x_key = f"blob{blob_idx}_center_x"
         
         if (rs_key in prior_params and 
             rs_key in initial_position):
             params_to_infer.add('rs')
             
-        if (center_key in prior_params and 
-            center_key in initial_position):
+        # Check for single scalar center parameter
+        if (center_key in prior_params and center_key in initial_position):
+            params_to_infer.add('center')
+        # Check for 3D center parameter
+        elif (center_x_key in prior_params and center_x_key in initial_position):
             params_to_infer.add('center')
     
     # Velocity parameters
@@ -283,18 +330,23 @@ def extract_params_to_evaluate(blob, blob_idx, prior_params):
     # Position parameters
     if blob['pos_type'] == 'gaussian':
         sigma_key = f"blob{blob_idx}_sigma"
-        center_key = f"blob{blob_idx}_center_x"
+        center_key = f"blob{blob_idx}_center"  # Check single scalar first
+        center_x_key = f"blob{blob_idx}_center_x"  # Then check 3D format
         
         if (sigma_key in prior_params):
             params_to_infer.add('sigma')
             
         if (center_key in prior_params):
             params_to_infer.add('center')
+
+        elif (center_x_key in prior_params):
+            params_to_infer.add('center')
             
     elif blob['pos_type'] == 'nfw':
         rs_key = f"blob{blob_idx}_rs"
         c_key = f"blob{blob_idx}_c"
-        center_key = f"blob{blob_idx}_center_x"
+        center_key = f"blob{blob_idx}_center"  # Check single scalar first
+        center_x_key = f"blob{blob_idx}_center_x"  # Then check 3D format
         
         if (rs_key in prior_params):
             params_to_infer.add('rs')
@@ -304,15 +356,22 @@ def extract_params_to_evaluate(blob, blob_idx, prior_params):
             
         if (center_key in prior_params):
             params_to_infer.add('center')
+
+        elif (center_x_key in prior_params):
+            params_to_infer.add('center')
             
     elif blob['pos_type'] == 'plummer':
         rs_key = f"blob{blob_idx}_rs"
-        center_key = f"blob{blob_idx}_center_x"
+        center_key = f"blob{blob_idx}_center"  # Check single scalar first
+        center_x_key = f"blob{blob_idx}_center_x"  # Then check 3D format
         
         if (rs_key in prior_params):
             params_to_infer.add('rs')
             
         if (center_key in prior_params):
+            params_to_infer.add('center')
+
+        elif (center_x_key in prior_params):
             params_to_infer.add('center')
     
     # Velocity parameters
@@ -340,18 +399,23 @@ def extract_params_to_optimize(blob, blob_idx, initial_position):
     # Position parameters
     if blob['pos_type'] == 'gaussian':
         sigma_key = f"blob{blob_idx}_sigma"
-        center_key = f"blob{blob_idx}_center_x"
+        center_key = f"blob{blob_idx}_center"  # Check single scalar first
+        center_x_key = f"blob{blob_idx}_center_x"  # Then check 3D format
         
         if sigma_key in initial_position:
             params_to_infer.add('sigma')
             
         if center_key in initial_position:
             params_to_infer.add('center')
+        
+        elif center_x_key in initial_position:
+            params_to_infer.add('center')
             
     elif blob['pos_type'] == 'nfw':
         rs_key = f"blob{blob_idx}_rs"
         c_key = f"blob{blob_idx}_c"
-        center_key = f"blob{blob_idx}_center_x"
+        center_key = f"blob{blob_idx}_center"  # Check single scalar first
+        center_x_key = f"blob{blob_idx}_center_x"  # Then check 3D format
         
         if rs_key in initial_position:
             params_to_infer.add('rs')
@@ -361,15 +425,22 @@ def extract_params_to_optimize(blob, blob_idx, initial_position):
             
         if center_key in initial_position:
             params_to_infer.add('center')
+        
+        elif center_x_key in initial_position:
+            params_to_infer.add('center')
             
     elif blob['pos_type'] == 'plummer':
         rs_key = f"blob{blob_idx}_rs"
-        center_key = f"blob{blob_idx}_center_x"
+        center_key = f"blob{blob_idx}_center"  # Check single scalar first
+        center_x_key = f"blob{blob_idx}_center_x"  # Then check 3D format
         
         if rs_key in initial_position:
             params_to_infer.add('rs')
             
         if center_key in initial_position:
+            params_to_infer.add('center')
+        
+        elif center_x_key in initial_position:
             params_to_infer.add('center')
     
     # Velocity parameters
@@ -395,17 +466,35 @@ def params_init(params_infos, initial_position):
     all_initial_params = []
     n_blobs = len(params_infos)
     params_order = params_infos[0]['changing_param_order']
+    
     for blob_idx in range(n_blobs):
         blob_initial_params = []
         for param_name in params_order:
-            # Check if the parameter exists in initial_position
-            if f"blob{blob_idx}_{param_name}" in initial_position:
-                blob_initial_params.append(initial_position[f"blob{blob_idx}_{param_name}"])
+            if param_name == 'center':
+                # Single scalar format
+                key = f"blob{blob_idx}_center"
+                if key in initial_position:
+                    blob_initial_params.append(initial_position[key])
+                else:
+                    raise ValueError(f"Parameter {key} not found in initial_position.")
+            elif param_name in ['center_x', 'center_y', 'center_z']:
+                # Traditional 3D format
+                key = f"blob{blob_idx}_{param_name}"
+                if key in initial_position:
+                    blob_initial_params.append(initial_position[key])
+                else:
+                    raise ValueError(f"Parameter {key} not found in initial_position.")
             else:
-                raise ValueError(f"Parameter blob{blob_idx}_{param_name} not found in initial_position.")
+                # Other parameters
+                key = f"blob{blob_idx}_{param_name}"
+                if key in initial_position:
+                    blob_initial_params.append(initial_position[key])
+                else:
+                    raise ValueError(f"Parameter {key} not found in initial_position.")
         
         all_initial_params.append(jnp.array(blob_initial_params, dtype=jnp.float32))
-    return jnp.stack(all_initial_params) 
+    
+    return jnp.stack(all_initial_params)
 
 def prior_params_extract(prior_type, prior_params, params_infos):
     """Extract prior parameters from prior_params dict based on params_infos"""
@@ -436,7 +525,7 @@ def prior_params_extract(prior_type, prior_params, params_infos):
             else:
                 raise ValueError(f"Parameter blob{blob_idx}_{param_name} not found in initial_position.")
         all_prior_params.append(jnp.array(blob_prior_params, dtype=jnp.float32))
-    return jnp.stack(all_prior_params), jnp.array(params_labels, dtype=jnp.str_)
+    return jnp.stack(all_prior_params), params_labels
 
 
     ## TO BE CHECKED 

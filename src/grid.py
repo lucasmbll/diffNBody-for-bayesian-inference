@@ -9,45 +9,55 @@ import os
 
 def create_parameter_grid(n_points_per_dim, param_bounds, params_infos):
     changing_param_order = params_infos[0]['changing_param_order']
+    num_blobs = len(params_infos)
     
-    # Create grid points for each parameter
-    param_grids = {}
-    for param_name in changing_param_order:
-        found_bounds = False
-        for blob_idx in range(len(params_infos)):
+    # Create separate parameter grids for each blob
+    blob_param_grids = {}
+    for blob_idx in range(num_blobs):
+        blob_param_grids[blob_idx] = {}
+        for param_name in changing_param_order:
             param_key = f"blob{blob_idx}_{param_name}"
             if param_key in param_bounds:
                 bounds = param_bounds[param_key]
-                param_grids[param_key] = np.linspace(bounds['min'], bounds['max'], n_points_per_dim)
-                found_bounds = True
-                break
-        
-        if not found_bounds:
-            raise ValueError(f"No bounds found for parameter '{param_name}' in param_bounds. "
-                           f"Expected at least one of: {[f'blob{i}_{param_name}' for i in range(len(params_infos))]}")
-
-    # Generate all combinations of parameter values for a single blob
-    param_names = list(param_grids.keys())
-    param_values = list(param_grids.values())
-    single_blob_combinations = list(product(*param_values))
-
-    # Convert single blob combinations into full parameter sets for all blobs
-    num_blobs = len(params_infos)
-    parameter_sets = []
+                blob_param_grids[blob_idx][param_name] = jnp.linspace(
+                    bounds['min'], bounds['max'], n_points_per_dim
+                )
+            else:
+                raise ValueError(f"No bounds found for parameter '{param_key}' in param_bounds")
     
-    for combo in single_blob_combinations:
-        # Create a parameter array for all blobs
+    # Generate all combinations across all blobs
+    all_param_names = []
+    all_param_values = []
+    
+    for blob_idx in range(num_blobs):
+        for param_name in changing_param_order:
+            all_param_names.append(f"blob{blob_idx}_{param_name}")
+            all_param_values.append(blob_param_grids[blob_idx][param_name])
+    
+    # Create all combinations
+    all_combinations = list(product(*all_param_values))
+    
+    # Convert to parameter sets
+    parameter_sets = []
+    for combo in all_combinations:
+        # Reshape combination into blob structure
         blob_params = []
         for blob_idx in range(num_blobs):
-            blob_params.append(jnp.array(combo, dtype=jnp.float32))
+            start_idx = blob_idx * len(changing_param_order)
+            end_idx = start_idx + len(changing_param_order)
+            blob_combo = combo[start_idx:end_idx]
+            blob_params.append(jnp.array(blob_combo, dtype=jnp.float32))
         parameter_sets.append(jnp.stack(blob_params))
-
-    print(f"Created parameter grid with {len(parameter_sets)} parameter combinations")
-    print(f"Parameters: {param_names}")
-    print(f"Grid dimensions: {[len(values) for values in param_values]}")
-
+    
     parameter_sets = jnp.array(parameter_sets, dtype=jnp.float32)
+    
+    print(f"Created parameter grid with {len(parameter_sets)} parameter combinations")
+    print(f"Parameters per blob: {changing_param_order}")
+    print(f"Number of blobs: {num_blobs}")
+    print(f"Grid dimensions per blob: {[n_points_per_dim] * len(changing_param_order)}")
+    print(f"Total grid dimensions: {[n_points_per_dim] * len(changing_param_order) * num_blobs}")
     print(f"Parameter sets shape: {parameter_sets.shape}")
+    
     return parameter_sets
 
 def evaluate_likelihood(parameter_sets, mini_batch_size, log_posterior_fn, log_prior_fn):
@@ -163,7 +173,7 @@ def evaluate_likelihood(parameter_sets, mini_batch_size, log_posterior_fn, log_p
     }    
     return log_posterior_values, log_lik_values, evaluation_stats, valid_mask
 
-def value_surface(parameter_sets, log_posterior_values, log_lik_values, param_names, valid_mask, output_dir):
+def value_surface(data_params, parameter_sets, log_posterior_values, log_lik_values, param_names, valid_mask, output_dir):
     n_params_per_blob = parameter_sets.shape[2]
     # Extract parameter values into arrays
     param_arrays = {}
@@ -173,6 +183,12 @@ def value_surface(parameter_sets, log_posterior_values, log_lik_values, param_na
         values = parameter_sets[:, blob_idx, param_idx]
         param_arrays[param_name] = values
     
+    # Extract true parameter values
+    true_param_values = {}
+    for idx, param_name in enumerate(param_names):
+        blob_idx = idx // n_params_per_blob
+        param_idx = idx % n_params_per_blob
+        true_param_values[param_name] = data_params[blob_idx, param_idx]
 
     param_pairs = [(param_names[i], param_names[j]) for i in range(len(param_names)) 
                    for j in range(i+1, len(param_names))]
@@ -186,6 +202,10 @@ def value_surface(parameter_sets, log_posterior_values, log_lik_values, param_na
         p2_vals = param_arrays[param2][valid_mask]
         like_vals = log_lik_values[valid_mask]
         post_vals = log_posterior_values[valid_mask]
+        
+        # Get true values for this pair
+        true_p1 = float(true_param_values[param1])
+        true_p2 = float(true_param_values[param2])
         
         try:
             # Simple averaging with numpy
@@ -203,18 +223,22 @@ def value_surface(parameter_sets, log_posterior_values, log_lik_values, param_na
             ax1 = plt.subplot(2, 2, 1)
             scatter1 = ax1.tricontourf(p1_avg, p2_avg, like_avg, levels=20, cmap='plasma', alpha=0.8)
             ax1.scatter(p1_avg, p2_avg, c=like_avg, cmap='viridis', s=10, alpha=0.6)
+            ax1.scatter(true_p1, true_p2, c='red', s=100, marker='*', label=f'True ({true_p1:.3f}, {true_p2:.3f})')
             ax1.set_xlabel(param1)
             ax1.set_ylabel(param2)
             ax1.set_title('2D Likelihood Surface (Averaged)')
+            ax1.legend()
             plt.colorbar(scatter1, ax=ax1, label='Log Likelihood')
             
             # Posterior surface 2D
             ax2 = plt.subplot(2, 2, 2)
             scatter2 = ax2.tricontourf(p1_avg, p2_avg, post_avg, levels=20, cmap='plasma', alpha=0.8)
             ax2.scatter(p1_avg, p2_avg, c=post_avg, cmap='plasma', s=10, alpha=0.6)
+            ax2.scatter(true_p1, true_p2, c='red', s=100, marker='*', label=f'True ({true_p1:.3f}, {true_p2:.3f})')
             ax2.set_xlabel(param1)
             ax2.set_ylabel(param2)
             ax2.set_title('2D Posterior Surface (Averaged)')
+            ax2.legend()
             plt.colorbar(scatter2, ax=ax2, label='Log Posterior')
             
             # Second row: 3D surfaces
@@ -222,6 +246,7 @@ def value_surface(parameter_sets, log_posterior_values, log_lik_values, param_na
             ax3 = plt.subplot(2, 2, 3, projection='3d')
             ax3.plot_trisurf(p1_avg, p2_avg, like_avg, cmap='viridis', alpha=0.8)
             ax3.scatter(p1_avg, p2_avg, like_avg, c=like_avg, cmap='viridis', s=20, alpha=0.6)
+            ax3.scatter(true_p1, true_p2, np.interp([true_p1, true_p2], [p1_avg.min(), p2_avg.min()], [like_avg.min(), like_avg.max()])[0], c='red', s=100, marker='*')
             ax3.set_xlabel(param1)
             ax3.set_ylabel(param2)
             ax3.set_zlabel('Log Likelihood')
@@ -231,6 +256,7 @@ def value_surface(parameter_sets, log_posterior_values, log_lik_values, param_na
             ax4 = plt.subplot(2, 2, 4, projection='3d')
             ax4.plot_trisurf(p1_avg, p2_avg, post_avg, cmap='plasma', alpha=0.8)
             ax4.scatter(p1_avg, p2_avg, post_avg, c=post_avg, cmap='plasma', s=20, alpha=0.6)
+            ax4.scatter(true_p1, true_p2, np.interp([true_p1, true_p2], [p1_avg.min(), p2_avg.min()], [post_avg.min(), post_avg.max()])[0], c='red', s=100, marker='*')
             ax4.set_xlabel(param1)
             ax4.set_ylabel(param2)
             ax4.set_zlabel('Log Posterior')
@@ -258,7 +284,7 @@ def value_surface(parameter_sets, log_posterior_values, log_lik_values, param_na
         plt.close()
 
 
-def values_slices(parameter_sets, log_posterior_values, log_lik_values, param_names, valid_mask, output_dir):
+def values_slices(data_params, parameter_sets, log_posterior_values, log_lik_values, param_names, valid_mask, output_dir):
     n_params_per_blob = parameter_sets.shape[2]
     # Extract parameter values into arrays
     param_arrays = {}
@@ -267,6 +293,13 @@ def values_slices(parameter_sets, log_posterior_values, log_lik_values, param_na
         param_idx = idx % n_params_per_blob
         values = parameter_sets[:, blob_idx, param_idx]
         param_arrays[param_name] = values
+
+    # Extract true parameter values
+    true_param_values = {}
+    for idx, param_name in enumerate(param_names):
+        blob_idx = idx // n_params_per_blob
+        param_idx = idx % n_params_per_blob
+        true_param_values[param_name] = data_params[blob_idx, param_idx]
 
     # Create slices for each parameter
     for param_idx, param_name in enumerate(param_names):
@@ -324,6 +357,9 @@ def values_slices(parameter_sets, log_posterior_values, log_lik_values, param_na
             std_like_plot = std_likelihood[valid_plot_mask]
             std_post_plot = std_posterior[valid_plot_mask]
             
+            # Get true value for this parameter
+            true_param_val = float(true_param_values[param_name])
+            
             # Create subplot for this parameter
             fig, axes = plt.subplots(1, 2, figsize=(15, 6))
             fig.suptitle(f'Parameter Slice: {param_name} (Averaged over Other Parameters)', fontsize=14)
@@ -332,10 +368,13 @@ def values_slices(parameter_sets, log_posterior_values, log_lik_values, param_na
             ax = axes[0]
             ax.errorbar(param_vals_plot, avg_like_plot, yerr=std_like_plot, 
                        marker='o', linestyle='-', capsize=5, alpha=0.8, linewidth=2, markersize=6)
+            ax.axvline(true_param_val, color='red', linestyle='--', linewidth=2, 
+                      label=f'True value ({true_param_val:.3f})')
             ax.set_xlabel(param_name)
             ax.set_ylabel('Average Log Likelihood')
             ax.set_title(f'Average Likelihood vs {param_name}')
             ax.grid(True, alpha=0.3)
+            ax.legend()
             
             # Add text showing number of realizations averaged
             n_realizations = [np.sum(valid_mask & (param_arrays[param_name] == pv)) for pv in param_vals_plot]
@@ -347,10 +386,13 @@ def values_slices(parameter_sets, log_posterior_values, log_lik_values, param_na
             ax = axes[1]
             ax.errorbar(param_vals_plot, avg_post_plot, yerr=std_post_plot, 
                        marker='s', linestyle='-', capsize=5, alpha=0.8, linewidth=2, markersize=6, color='orange')
+            ax.axvline(true_param_val, color='red', linestyle='--', linewidth=2, 
+                      label=f'True value ({true_param_val:.3f})')
             ax.set_xlabel(param_name)
             ax.set_ylabel('Average Log Posterior')
             ax.set_title(f'Average Posterior vs {param_name}')
             ax.grid(True, alpha=0.3)
+            ax.legend()
             
             # Add text showing number of realizations averaged
             ax.text(0.02, 0.98, f'Avg over {min(n_realizations)}-{max(n_realizations)} realizations', 
@@ -483,7 +525,7 @@ def evaluate_gradients(parameter_sets, mini_batch_size, log_posterior_fn, log_pr
     
     return posterior_gradient_values, likelihood_gradient_values, evaluation_stats, valid_mask
 
-def quiver_grad_surface(parameter_sets, log_lik_values, posterior_gradient_values, likelihood_gradient_values, param_names, valid_mask, output_dir):
+def quiver_grad_surface(parameter_sets, log_lik_values, log_posterior_values, likelihood_gradient_values, posterior_gradient_values, param_names, valid_mask, output_dir):
     n_params_per_blob = parameter_sets.shape[2]
     # Extract parameter values into arrays
     param_arrays = {}
@@ -498,60 +540,81 @@ def quiver_grad_surface(parameter_sets, log_lik_values, posterior_gradient_value
                    for j in range(i+1, len(param_names))]
     
     # Extract gradient components for each parameter
-    grad_arrays = {}
+    likelihood_grad_arrays = {}
+    posterior_grad_arrays = {}
     for idx, param_name in enumerate(param_names):
         blob_idx = idx // n_params_per_blob
         param_idx = idx % n_params_per_blob
         # Extract gradient for this parameter from all parameter sets
-        grad_values = []
+        lik_grad_values = []
+        post_grad_values = []
         for i in range(len(parameter_sets)):
             if valid_mask[i]:
-                grad_val = likelihood_gradient_values[i, blob_idx, param_idx]
-                grad_values.append(grad_val)
+                lik_grad_val = likelihood_gradient_values[i, blob_idx, param_idx]
+                post_grad_val = posterior_gradient_values[i, blob_idx, param_idx]
+                lik_grad_values.append(lik_grad_val)
+                post_grad_values.append(post_grad_val)
             else:
-                grad_values.append(np.nan)
-        grad_arrays[param_name] = np.array(grad_values)
+                lik_grad_values.append(np.nan)
+                post_grad_values.append(np.nan)
+        likelihood_grad_arrays[param_name] = np.array(lik_grad_values)
+        posterior_grad_arrays[param_name] = np.array(post_grad_values)
 
     for pair_idx, (param1, param2) in enumerate(param_pairs):
-        fig, ax = plt.subplots(1, 1, figsize=(12, 10))
-        fig.suptitle(f'Gradient Quiver Plot: {param1} vs {param2}', fontsize=16)
+        fig, axes = plt.subplots(1, 2, figsize=(24, 10))
+        fig.suptitle(f'Gradient Quiver Plots: {param1} vs {param2}', fontsize=16)
         
         # Get parameter grids
         p1_vals = param_arrays[param1][valid_mask]
         p2_vals = param_arrays[param2][valid_mask]
         like_vals = log_lik_values[valid_mask]
+        post_vals = log_posterior_values[valid_mask]
         
         # Get gradients for this parameter pair
-        grad1_vals = grad_arrays[param1][valid_mask]
-        grad2_vals = grad_arrays[param2][valid_mask]
+        lik_grad1_vals = likelihood_grad_arrays[param1][valid_mask]
+        lik_grad2_vals = likelihood_grad_arrays[param2][valid_mask]
+        post_grad1_vals = posterior_grad_arrays[param1][valid_mask]
+        post_grad2_vals = posterior_grad_arrays[param2][valid_mask]
         
         try:
-            # Create background contour plot of likelihood
-            scatter = ax.tricontourf(p1_vals, p2_vals, like_vals, levels=20, cmap='plasma', alpha=0.6)
-            plt.colorbar(scatter, ax=ax, label='Log Likelihood')
+            # Marginalize over other parameters by averaging
+            coords = np.column_stack([p1_vals, p2_vals])
+            unique_coords, inverse = np.unique(coords, axis=0, return_inverse=True)
             
-            # Create quiver plot of gradients
-            # Subsample points for cleaner visualization
-            n_points = len(p1_vals)
-            skip = max(1, n_points // 50)  # Show at most 50 arrows
+            # Average values and gradients for each unique coordinate
+            like_avg = np.array([like_vals[inverse == i].mean() for i in range(len(unique_coords))])
+            post_avg = np.array([post_vals[inverse == i].mean() for i in range(len(unique_coords))])
+            
+            lik_grad1_avg = np.array([lik_grad1_vals[inverse == i].mean() for i in range(len(unique_coords))])
+            lik_grad2_avg = np.array([lik_grad2_vals[inverse == i].mean() for i in range(len(unique_coords))])
+            post_grad1_avg = np.array([post_grad1_vals[inverse == i].mean() for i in range(len(unique_coords))])
+            post_grad2_avg = np.array([post_grad2_vals[inverse == i].mean() for i in range(len(unique_coords))])
+            
+            p1_avg = unique_coords[:, 0]
+            p2_avg = unique_coords[:, 1]
+            
+            # Plot 1: Likelihood gradient quiver
+            ax = axes[0]
+            scatter1 = ax.tricontourf(p1_avg, p2_avg, like_avg, levels=20, cmap='plasma', alpha=0.6)
+            plt.colorbar(scatter1, ax=ax, label='Log Likelihood')
             
             # Filter out NaN gradients
-            valid_grad_mask = ~(np.isnan(grad1_vals) | np.isnan(grad2_vals))
+            valid_grad_mask = ~(np.isnan(lik_grad1_avg) | np.isnan(lik_grad2_avg))
             
             if np.sum(valid_grad_mask) > 0:
-                p1_quiver = p1_vals[valid_grad_mask][::skip]
-                p2_quiver = p2_vals[valid_grad_mask][::skip]
-                grad1_quiver = grad1_vals[valid_grad_mask][::skip]
-                grad2_quiver = grad2_vals[valid_grad_mask][::skip]
+                p1_quiver = p1_avg[valid_grad_mask]
+                p2_quiver = p2_avg[valid_grad_mask]
+                grad1_quiver = lik_grad1_avg[valid_grad_mask]
+                grad2_quiver = lik_grad2_avg[valid_grad_mask]
                 
                 # Normalize gradients for better visualization
                 grad_magnitude = np.sqrt(grad1_quiver**2 + grad2_quiver**2)
                 max_grad = np.max(grad_magnitude)
                 
                 if max_grad > 0:
-                    scale_factor = 0.1 * (np.max(p1_vals) - np.min(p1_vals)) / max_grad
+                    scale_factor = 0.1 * (np.max(p1_avg) - np.min(p1_avg)) / max_grad
                     
-                    quiver = ax.quiver(p1_quiver, p2_quiver, 
+                    quiver1 = ax.quiver(p1_quiver, p2_quiver, 
                                         grad1_quiver, grad2_quiver,
                                         grad_magnitude,
                                         cmap='RdBu_r', alpha=0.8, 
@@ -559,8 +622,9 @@ def quiver_grad_surface(parameter_sets, log_lik_values, posterior_gradient_value
                                         angles='xy', width=0.003)
                     
                     # Add colorbar for gradient magnitude
-                    cbar = plt.colorbar(quiver, ax=ax, label='Gradient Magnitude', 
-                                        orientation='horizontal', pad=0.1, shrink=0.8)
+                    plt.colorbar(quiver1, ax=ax, label='Gradient Magnitude', 
+                                        orientation='horizontal', pad=0.1, shrink=0.8) 
+                    
                 else:
                     ax.text(0.5, 0.5, 'All gradients are zero', 
                             transform=ax.transAxes, ha='center', va='center')
@@ -570,18 +634,63 @@ def quiver_grad_surface(parameter_sets, log_lik_values, posterior_gradient_value
             
             ax.set_xlabel(param1)
             ax.set_ylabel(param2)
-            ax.set_title(f'Likelihood Surface with Gradient Field')
+            ax.set_title(f'Likelihood Surface with Gradient Field (Marginalized)')
+            
+            # Plot 2: Posterior gradient quiver
+            ax = axes[1]
+            scatter2 = ax.tricontourf(p1_avg, p2_avg, post_avg, levels=20, cmap='plasma', alpha=0.6)
+            plt.colorbar(scatter2, ax=ax, label='Log Posterior')
+            
+            # Filter out NaN gradients
+            valid_grad_mask = ~(np.isnan(post_grad1_avg) | np.isnan(post_grad2_avg))
+            
+            if np.sum(valid_grad_mask) > 0:
+                p1_quiver = p1_avg[valid_grad_mask]
+                p2_quiver = p2_avg[valid_grad_mask]
+                grad1_quiver = post_grad1_avg[valid_grad_mask]
+                grad2_quiver = post_grad2_avg[valid_grad_mask]
+                
+                # Normalize gradients for better visualization
+                grad_magnitude = np.sqrt(grad1_quiver**2 + grad2_quiver**2)
+                max_grad = np.max(grad_magnitude)
+                
+                if max_grad > 0:
+                    scale_factor = 0.1 * (np.max(p1_avg) - np.min(p1_avg)) / max_grad
+                    
+                    quiver2 = ax.quiver(p1_quiver, p2_quiver, 
+                                        grad1_quiver, grad2_quiver,
+                                        grad_magnitude,
+                                        cmap='RdBu_r', alpha=0.8, 
+                                        scale=1/scale_factor, scale_units='xy',
+                                        angles='xy', width=0.003)
+                    
+                    # Add colorbar for gradient magnitude
+                    plt.colorbar(quiver2, ax=ax, label='Gradient Magnitude', 
+                                        orientation='horizontal', pad=0.1, shrink=0.8) 
+                    
+                else:
+                    ax.text(0.5, 0.5, 'All gradients are zero', 
+                            transform=ax.transAxes, ha='center', va='center')
+            else:
+                ax.text(0.5, 0.5, 'No valid gradients available', 
+                        transform=ax.transAxes, ha='center', va='center')
+            
+            ax.set_xlabel(param1)
+            ax.set_ylabel(param2)
+            ax.set_title(f'Posterior Surface with Gradient Field (Marginalized)')
             
         except Exception as e:
-            print(f"Warning: Could not create quiver plot for {param1} vs {param2}: {e}")
-            ax.text(0.5, 0.5, f'Quiver plot failed:\n{str(e)}', 
-                    transform=ax.transAxes, ha='center', va='center')
+            print(f"Warning: Could not create quiver plots for {param1} vs {param2}: {e}")
+            for ax in axes:
+                ax.text(0.5, 0.5, f'Quiver plot failed:\n{str(e)}', 
+                        transform=ax.transAxes, ha='center', va='center')
         
         fig_name = f'gradient_quiver_{param1}_vs_{param2}.png'
         dir = os.path.join(output_dir, fig_name)
         plt.tight_layout()
         plt.savefig(dir, dpi=300, bbox_inches='tight')
         plt.close()
+    
 
 
 
@@ -979,20 +1088,7 @@ def create_comprehensive_analysis(parameter_sets, log_posterior_values, gradient
                                f"avg_like={avg_like:.3f}, avg_post={avg_post:.3f}, avg_grad={avg_grad:.3e}\n")
             f.write("\n")
         
-        # Parameter statistics
-        if np.sum(valid_mask) > 0:
-            f.write("=== PARAMETER STATISTICS ===\n")
-            
-            # Best point
-            best_idx = np.argmax(log_posterior_values[valid_mask])
-            best_point_global = np.where(valid_mask)[0][best_idx]
-            f.write("=== BEST PARAMETER POINT ===\n")
-            f.write(f"Best posterior value: {log_posterior_values[best_point_global]:.6f}\n")
-            f.write(f"Best likelihood value: {likelihood_values[best_point_global]:.6f}\n")
-            f.write("Best parameters:\n")
-            for param_name in param_names:
-                f.write(f"  {param_name}: {param_arrays[param_name][best_point_global]:.6f}\n")
-            f.write("\n")
+       
             
             # Gradient statistics
             f.write("=== GRADIENT STATISTICS ===\n")
