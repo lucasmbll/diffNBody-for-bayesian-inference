@@ -3,7 +3,7 @@
 # Use with : python src/run.py --config configs/stable_configs/dwarf_galaxy/rwm_chain1.yaml
 
 # --- HARDWARE/CLUSTER SETTINGS ---
-cuda_visible_devices: '0'  # GPU index to use
+cuda_visible_devices: '1'  # GPU index to use
 
 # --- EXPERIMENT MODE and MISCELLANEOUS ---
 mode: sampling      # Experiment mode (options: "sim", "sampling")
@@ -48,7 +48,7 @@ model_params:
   # Blob parameters - a list of blob configurations for generating mock data
   blobs_params:
     # Blob 1: Gaussian at corner 1 of triangle
-      - n_part: 2000
+      - n_part: 1000
         m_part: 6
         pos_type: gaussian
         pos_params:

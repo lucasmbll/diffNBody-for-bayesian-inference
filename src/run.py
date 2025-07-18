@@ -115,11 +115,12 @@ def main(config_path):
             solver=solver,
             observable=observable
         )
+
     result = model_fn(
         data_params,
         data_key
     )
-    
+     
     initial_field, final_field, final_observable_field, sol_ts, sol_ys, masses = result
 
     if mode == "sim":
@@ -235,7 +236,7 @@ def main(config_path):
         return
 
     # Load data
-    data = final_field
+    data = final_observable_field
 
     # Likelihood
     likelihood_type = config.get("likelihood_type", None)

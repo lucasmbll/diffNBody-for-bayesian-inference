@@ -58,11 +58,13 @@ def initialize_plummer_positions(n_part, center, rs, length, key):
 
 # --- Velocity initialization functions ---
 
+@jax.jit
 def initialize_cold_velocities(positions, vel_dispersion, vel_key):
     n_part = positions.shape[0]
     velocities = jax.random.normal(vel_key, (n_part, 3)) * vel_dispersion
     return velocities
 
+@jax.jit
 def initialize_virial_velocities(positions, virial_ratio, G, m_part, vel_key):
     n_part = positions.shape[0]
     # Calculate the potential energy (assuming all particles in this blob have the same mass)
@@ -85,6 +87,7 @@ def initialize_virial_velocities(positions, virial_ratio, G, m_part, vel_key):
     velocities = velocities - net_momentum / n_part
     return velocities
 
+@jax.jit
 def initialize_circular_velocities_proxy(positions, vel_factor, G, m_part, softening):
     n_part = positions.shape[0]
     center = jnp.mean(positions, axis=0)     # Calculate the center of mass
@@ -100,6 +103,7 @@ def initialize_circular_velocities_proxy(positions, vel_factor, G, m_part, softe
     velocities = v_circ[:, None] * perp_normalized
     return velocities
 
+@jax.jit
 def initialize_circular_velocities_gaussian(positions, vel_factor, G, m_part, sigma, softening):
     n_part = positions.shape[0]
     # Calculate the center of mass (should be close to the blob center)
@@ -123,6 +127,7 @@ def initialize_circular_velocities_gaussian(positions, vel_factor, G, m_part, si
     velocities = v_circ[:, None] * perp_normalized
     return velocities
 
+@jax.jit
 def initialize_circular_velocities_nfw(positions, vel_factor, G, m_part, c, rs, softening):
     n_part = positions.shape[0]
     center = jnp.mean(positions, axis=0)
@@ -138,6 +143,7 @@ def initialize_circular_velocities_nfw(positions, vel_factor, G, m_part, c, rs, 
     velocities = v_circ[:, None] * perp_normalized
     return velocities
 
+@jax.jit
 def initialize_circular_velocities_plummer(positions, vel_factor, G, m_part, rs, softening):
     n_part = positions.shape[0]
     center = jnp.mean(positions, axis=0)

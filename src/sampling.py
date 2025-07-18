@@ -1,12 +1,8 @@
 # sampling.py
 
 import jax
-import jax.numpy as jnp
 import blackjax
-import numpy as np
 import time
-from functools import partial
-from jax_tqdm import scan_tqdm
 
 def inference_loop(rng_key, kernel, initial_state, num_samples):
     @jax.jit

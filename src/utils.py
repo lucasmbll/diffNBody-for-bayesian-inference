@@ -543,7 +543,7 @@ def prior_params_extract(prior_type, prior_params, params_infos):
 
 
     ## TO BE CHECKED 
-
+"""
 
 def tune_step_size(sampler_class, log_posterior, initial_position, rng_key, num_trials=200, step_sizes=None):
     import jax
@@ -569,4 +569,4 @@ def tune_step_size(sampler_class, log_posterior, initial_position, rng_key, num_
             best_rate = acceptance_rate
             best_step = step_size
     print(f"Selected step_size={best_step} with acceptance_rate={best_rate}")
-    return best_step
+    return best_step"""

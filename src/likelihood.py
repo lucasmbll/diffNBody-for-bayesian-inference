@@ -2,7 +2,6 @@
 
 import jax
 import jax.numpy as jnp
-import jax.scipy.stats as stats
 import numpy as np
 
 # Define likelihood functions

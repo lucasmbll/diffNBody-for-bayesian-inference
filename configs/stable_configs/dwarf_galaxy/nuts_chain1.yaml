@@ -1,6 +1,6 @@
 # Configuration for N-body parameter inference using blobs model
 
-# Use with : python src/run_experiments.py --config configs/stable_configs/dwarf_galaxy/nuts_chain1.yaml
+# Use with : python src/run.py --config configs/stable_configs/dwarf_galaxy/nuts_chain1.yaml
 
 # --- HARDWARE/CLUSTER SETTINGS ---
 cuda_visible_devices: '1'  # GPU index to use
