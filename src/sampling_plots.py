@@ -183,18 +183,22 @@ def plot_rhat_analysis(chain_samples, param_order, n_samples_interval, output_di
         # Plot R-hat evolution
         ax.plot(sample_points, rhats, 'b-', linewidth=2, label='R-hat')
         
-        # Add reference lines
-        ax.axhline(y=1.0, color='green', linestyle='--', alpha=0.7, label='Perfect convergence')
-        ax.axhline(y=1.01, color='orange', linestyle='--', alpha=0.7, label='Excellent (< 1.01)')
-        ax.axhline(y=1.1, color='red', linestyle='--', alpha=0.7, label='Poor (> 1.1)')
+        
         
         ax.set_xlabel('Number of samples')
         ax.set_ylabel('R-hat')
         ax.set_title(f'R-hat convergence: {param_name}')
         ax.grid(True, alpha=0.3)
+        if min(rhats) > 2.0:
+            ax.set_ylim(min(rhats) if rhats else 0.90, max(rhats) if rhats else 2.0)
+        else:
+            ax.set_ylim(0.95, min(2.0, max(rhats) * 1.1) if rhats else 2.0)
+            # Add reference lines
+            ax.axhline(y=1.0, color='green', linestyle='--', alpha=0.7, label='Perfect convergence')
+            ax.axhline(y=1.01, color='orange', linestyle='--', alpha=0.7, label='Excellent (< 1.01)')
+            ax.axhline(y=1.1, color='red', linestyle='--', alpha=0.7, label='Poor (> 1.1)')
         ax.legend()
-        ax.set_ylim(0.95, max(2.0, max(rhats) * 1.1) if rhats else 2.0)
-    
+        
     plt.suptitle('R-hat Convergence Analysis', fontsize=14)
     plt.tight_layout()
     
@@ -249,6 +253,7 @@ def plot_ess_analysis(chain_samples, param_order, n_samples_interval, output_dir
         ax.set_title(f'ESS Analysis: {param_name}')
         ax.grid(True, alpha=0.3)
         ax.legend()
+        ax.set_yscale('log')  # Set y-axis to log scale
     
     plt.suptitle('Effective Sample Size Analysis', fontsize=14)
     plt.tight_layout()

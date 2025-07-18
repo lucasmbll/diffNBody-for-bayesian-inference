@@ -95,6 +95,7 @@ def main(config_path):
     from utils import blobs_params_init
     data_params, fixed_params, other_params, params_infos = blobs_params_init(blobs_params, prior_params, initial_position, mode)
 
+    observable = model_params.get("observable", ["density", "vx", "vy", "vz"])
 
     # Create model function with fixed parameters
     def model_fn(params, key):
@@ -112,13 +113,14 @@ def main(config_path):
             density_scaling=density_scaling,
             velocity_scaling=velocity_scaling,
             solver=solver,
+            observable=observable
         )
     result = model_fn(
         data_params,
         data_key
     )
     
-    initial_field, final_field, sol_ts, sol_ys, masses = result
+    initial_field, final_field, final_observable_field, sol_ts, sol_ys, masses = result
 
     if mode == "sim":
         print(f"Simulation completed.")

@@ -42,6 +42,8 @@ model_params:
   # Density field scaling options
   density_scaling: "log"  # Options: "none", "log", "sqrt", "power", "asinh", "signed_log"
   velocity_scaling: "none"  # Options: "none", "log", "sqrt", "power", "asinh", "signed_log"
+
+  observable: ["density", "vx", "vy", "vz"] 
   
   # Blob parameters - a list of blob configurations for generating mock data
   blobs_params:

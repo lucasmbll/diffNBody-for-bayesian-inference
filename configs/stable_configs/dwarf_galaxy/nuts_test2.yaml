@@ -1,6 +1,6 @@
 # Configuration for N-body parameter inference using blobs model
 
-# Use with : python src/run_experiments.py --config configs/defaults/chain2.yaml
+# Use with : python src/run_experiments.py --config configs/stable_configs/dwarf_galaxy/nuts_chain2.yaml
 
 # --- HARDWARE/CLUSTER SETTINGS ---
 cuda_visible_devices: '0'  # GPU index to use
@@ -12,7 +12,7 @@ mode: sampling      # Experiment mode (options: "sim", "sampling")
 plot_settings:
   enable_energy_tracking: false  # Calculate and plot energy evolution
   density_field_plot: 
-    do: true  # Plot density field
+    do: false  # Plot density field
   trajectories_plot: 
     do: false  # Plot particle trajectories
     num_trajectories: 10     # Number of particle trajectories to plot
@@ -21,7 +21,7 @@ plot_settings:
     do: false  # Plot time series of particle positions
     n_timesteps: 8        # Number of timesteps to plot
   velocity_plot: 
-    do: true  
+    do: false  
   generate_video: 
     do: false  # Generate video of the simulation
     video_fps: 30            # Video frames per second
@@ -70,21 +70,24 @@ model_params:
       
 
 # --- SAMPLER SETTINGS ---
-sampler: rwm           # No-U-Turn Sampler (NUTS)
+sampler: nuts           # No-U-Turn Sampler (NUTS)
 num_samples: 20000        # Number of MCMC samples to draw
 sampling_seed: 12345    # Random seed for reproducibility
 progress_bar: false  # Show progress bar during sampling
 
+# NUTS-specific parameters:
+num_warmup: 50         # Number of warmup steps for adaptation
+
 # Initial position for the sampler - start with values different from the true ones
 initial_position: 
   blob0_sigma: 5.2
-  blob0_center_x: 22.8
-  blob0_center_y: 18.6
-  blob0_center_z: 21.4
-  blob1_sigma: 8.7
-  blob1_center_x: 35.5
-  blob1_center_y: 41.2
-  blob1_center_z: 37.9
+  blob0_center_x: 18.1
+  blob0_center_y: 21.7
+  blob0_center_z: 19.3
+  blob1_sigma: 11.8
+  blob1_center_x: 35.4
+  blob1_center_y: 40.1
+  blob1_center_z: 37.2
   
 
 # --- LIKELIHOOD SETTINGS ---

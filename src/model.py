@@ -64,7 +64,8 @@ def model(
     key,
     density_scaling,
     velocity_scaling,
-    solver="LeapfrogMidpoint",
+    solver,
+    observable
 ):
     grid_shape = (length, length, length)
     # Initialize positions, velocities, and masses for all blobs    
@@ -148,6 +149,24 @@ def model(
     final_vz_field = apply_density_scaling(final_vz_field, velocity_scaling)
 
     final_phase_field = jnp.stack([final_density_field, final_vx_field, final_vy_field, final_vz_field], axis=-1)
+
+    # Create mapping of observable names to fields
+    observable_fields = {
+        "density": final_density_field,
+        "vx": final_vx_field,
+        "vy": final_vy_field,
+        "vz": final_vz_field
+    }
     
-    return initial_phase_field, final_phase_field, sol.ts, sol.ys, masses
+    # Filter and stack only the requested observables
+    selected_fields = []
+    for obs in observable:
+        if obs in observable_fields:
+            selected_fields.append(observable_fields[obs])
+        else:
+            raise ValueError(f"Unknown observable: {obs}. Available: {list(observable_fields.keys())}")
+    # Stack the selected fields along the last axis
+    final_observable_field = jnp.stack(selected_fields, axis=-1)
+
+    return initial_phase_field, final_phase_field, final_observable_field, sol.ts, sol.ys, masses
 

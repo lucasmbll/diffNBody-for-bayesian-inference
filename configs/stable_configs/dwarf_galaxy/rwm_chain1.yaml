@@ -1,9 +1,9 @@
 # Configuration for N-body parameter inference using blobs model
 
-# Use with : python src/run_experiments.py --config configs/stable_configs/dwarf_galaxy/rwm_chain1.yaml
+# Use with : python src/run.py --config configs/stable_configs/dwarf_galaxy/rwm_chain1.yaml
 
 # --- HARDWARE/CLUSTER SETTINGS ---
-cuda_visible_devices: '2'  # GPU index to use
+cuda_visible_devices: '0'  # GPU index to use
 
 # --- EXPERIMENT MODE and MISCELLANEOUS ---
 mode: sampling      # Experiment mode (options: "sim", "sampling")
@@ -43,6 +43,8 @@ model_params:
   density_scaling: "log"  # Options: "none", "log", "sqrt", "power", "asinh", "signed_log"
   velocity_scaling: "none"  # Options: "none", "log", "sqrt", "power", "asinh", "signed_log"
   
+  observable: ["density", "vx"] 
+
   # Blob parameters - a list of blob configurations for generating mock data
   blobs_params:
     # Blob 1: Gaussian at corner 1 of triangle
@@ -71,7 +73,7 @@ model_params:
 
 # --- SAMPLER SETTINGS ---
 sampler: rwm           # No-U-Turn Sampler (NUTS)
-num_samples: 2000        # Number of MCMC samples to draw
+num_samples: 20000        # Number of MCMC samples to draw
 sampling_seed: 12345    # Random seed for reproducibility
 progress_bar: false  # Show progress bar during sampling
 

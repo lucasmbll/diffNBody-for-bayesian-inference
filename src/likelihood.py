@@ -8,7 +8,7 @@ import numpy as np
 # Define likelihood functions
 def log_likelihood_1(params, data, noise, model_fn, key):
     out = model_fn(params, key)
-    output_field = out[1]   
+    output_field = out[2]   
     return compute_likelihood_1(output_field, data, noise)
 
 @jax.jit

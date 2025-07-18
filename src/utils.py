@@ -208,10 +208,24 @@ def extract_blob_parameters(blob_config, mode, infered_params):
         else:
             fixed_params.append(vel_params['vel_factor'])
             param_info['fixed_param_order'].append('vel_factor')
-        other_params['distrib'] = vel_params['distrib']    
-    
-    # Add cold velocity case and virial velocity case
-    # Add non-varying parameters
+        other_params['distrib'] = vel_params['distrib'] 
+
+    elif vel_type == 'cold':
+        if mode in ['sampling', 'mle', 'grid'] and 'vel_dispersion' in infered_params:
+                changing_params.append(vel_params['vel_dispersion'])
+                param_info['changing_param_order'].append('vel_dispersion')
+        else:
+            fixed_params.append(vel_params['vel_dispersion'])
+            param_info['fixed_param_order'].append('vel_dispersion')
+
+    elif vel_type == 'virial':
+        if mode in ['sampling', 'mle', 'grid'] and 'virial_ratio' in infered_params:
+                changing_params.append(vel_params['virial_ratio'])
+                param_info['changing_param_order'].append('virial_ratio')
+        else:
+            fixed_params.append(vel_params['virial_ratio'])
+            param_info['fixed_param_order'].append('virial_ratio')
+
     other_params['n_part'] = blob_config['n_part']
     fixed_params.append(blob_config['m_part'])
     param_info['fixed_param_order'].append('m_part')

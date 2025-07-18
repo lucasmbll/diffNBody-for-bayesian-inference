@@ -1,9 +1,10 @@
 # Configuration file for corner plots analysis
-# Use with: python src/sampling_plots.py configs/corner_plots/analysis_config.yaml
+# Use with: python src/sampling_plots.py configs/analysis/analysis_config.yaml
 # List of directories containing MCMC samples
 directories:
-    - results/sampling_results/rwm_chain1_20250717_020608
-    - results/sampling_results/rwm_chain2_20250717_095957
+    - results/sampling_results/rwm_chain1_20250718_113728
+    - results/sampling_results/rwm_chain2_20250718_113757
+    - results/sampling_results/rwm_chain3_20250718_113842
    
 output_dir: "results/corner_plots"
 
@@ -13,7 +14,7 @@ burnin: 0
 # Analysis parameters
 analysis:
     # Interval for computing R-hat and ESS (every N samples)
-    n_samples_interval: 2
+    n_samples_interval: 10
 
 # Optional: Add description for documentation
-description: "Analysis of NUTS sampling results from July 16, 2025"
+description: "Analysis of NUTS sampling results from July 18, 2025"
