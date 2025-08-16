@@ -1,0 +1,98 @@
+# Configuration for gradient sanity check
+
+# Use with: python src/run.py --config configs/report/1blob/sampling/high_res/grid.yaml
+
+cuda_visible_devices: '3'
+
+mode : grid  # Experiment mode (options: "sim", "sampling", "mle", "grid")
+
+save : false
+  
+# --- PLOT & VIDEO SETTINGS ---
+plot_settings:
+  enable_energy_tracking: true  # Calculate and plot energy evolution
+  density_field_plot: 
+    do: true  # Plot density field
+  trajectories_plot: 
+    do: true  # Plot particle trajectories
+    num_trajectories: 5     # Number of particle trajectories to plot
+    zoom_for_trajectories: true  # Zoom in on trajectories
+  timeseries_plot: 
+    do: true  # Plot time series of particle positions
+    n_timesteps: 10        # Number of timesteps to plot
+  velocity_plot: 
+    do: true  
+  generate_video: 
+    do: false  # Generate video of the simulation
+    video_fps: 30            # Video frames per second
+    video_dpi: 200           # Video resolution DPI
+  fft_plot:
+    do: true
+  power_spectrum_plot:
+    do: true
+  units:
+    kpc_per_pixel: 1.5625
+    msun_per_mass_unit: 8.46e5
+    gyr_per_time_unit: 1.0
+    jouleE50_per_unit : 3.97e-8
+
+
+# --- FORWARD MODEL PARAMETERS ---
+model_params:  
+  # General parameters
+  G: 1              # Gravitational constant
+  length: 128          # Box size
+  softening: 1      # Softening length
+  t_f: 2.0            # Final time
+  dt: 0.001            # Time step
+  data_seed: 42       # Random seed for data generation
+  solver: "LeapfrogMidpoint" # Solver type: "LeapfrogMidpoint", "Dopri5", "Dopri8", "Tsit5", "Heun, "Midpoint"
+  
+  # Density field scaling options
+  density_scaling: "log"  # Options: "none", "log", "sqrt", "power", "asinh", "signed_log"
+  velocity_scaling: "signed_log"  # Options: "none", "log", "sqrt", "power", "asinh", "signed_log"
+  
+  # Blob parameters - a list of blob configurations for generating mock data
+  blobs_params:
+      - n_part: 5000
+        m_part: 4.7
+        pos_type: gaussian
+        pos_params:
+          sigma: 9.6  
+          center: 64
+        vel_type: circular
+        vel_params:
+          vel_factor: 0.1 
+          vel_dispersion: 0.05
+          distrib: True
+
+  observable: ["density"] # Observables to compute
+
+  
+# --- LIKELIHOOD SETTINGS ---
+likelihood_type: ll1   # Options: "ll1", "ll2"
+likelihood_kwargs: 
+  noise: 10  # Standard deviation of instrumental noise
+
+# --- PRIOR SETTINGS ---
+prior_type: blob_uniform  # Use blob-specific prior
+prior_params:
+  blob0_sigma: {low: 2.0, high: 20.0} 
+  blob0_center: {low: 48.0, high: 80.0}
+
+
+# --- HYPERCUBE PARAMETERS ---
+hypercube_params:
+  n_points_per_dim: 30   # Number of points per parameter dimension 
+  mini_batch_size_value: 45 # Size of mini-batches for value evaluation 
+  mini_batch_size_grad: 5 # Size of mini-batches for gradient evaluation 
+  
+  # Parameter bounds for the hypercube
+  param_bounds: # Bounds will be the same for each blob
+    blob0_sigma: 
+      min: 2.0
+      max: 20.0
+    blob0_center:
+      min: 48.0
+      max: 80.0
+    

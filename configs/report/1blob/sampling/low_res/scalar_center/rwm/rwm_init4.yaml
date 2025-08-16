@@ -1,0 +1,93 @@
+# Configuration for gradient sanity check
+
+# Use with: python src/run.py --config configs/report/1blob/sampling/low_res/grid.yaml
+
+cuda_visible_devices: '7'
+
+mode : sampling  # Experiment mode (options: "sim", "sampling", "mle", "grid")
+
+save : false
+
+# --- PLOT & VIDEO SETTINGS ---
+plot_settings:
+  enable_energy_tracking: false  # Calculate and plot energy evolution
+  density_field_plot: 
+    do: false  # Plot density field
+  trajectories_plot: 
+    do: false  # Plot particle trajectories
+    num_trajectories: 5     # Number of particle trajectories to plot
+    zoom_for_trajectories: false  # Zoom in on trajectories
+  timeseries_plot: 
+    do: false  # Plot time series of particle positions
+    n_timesteps: 10        # Number of timesteps to plot
+  velocity_plot: 
+    do: false  
+  generate_video: 
+    do: false  # Generate video of the simulation
+    video_fps: 30            # Video frames per second
+    video_dpi: 200           # Video resolution DPI
+  fft_plot:
+    do: false
+  power_spectrum_plot:
+    do: false
+  units:
+    kpc_per_pixel: 6.25
+    msun_per_mass_unit: 1.35e+7
+    gyr_per_time_unit: 2.0
+    jouleE50_per_unit : 2.54e-06
+
+comparison_settings:
+  do_comparison: false
+
+# --- FORWARD MODEL PARAMETERS ---
+model_params:  
+  # General parameters
+  G: 1              # Gravitational constant
+  length: 32          # Box size
+  softening: 0.5      # Softening length
+  t_f: 1.0            # Final time
+  dt: 0.005            # Time step
+  data_seed: 42       # Random seed for data generation
+  solver: "LeapfrogMidpoint" # Solver type: "LeapfrogMidpoint", "Dopri5", "Dopri8", "Tsit5", "Heun, "Midpoint"
+  
+  # Density field scaling options
+  density_scaling: "log"  # Options: "none", "log", "sqrt", "power", "asinh", "signed_log"
+  velocity_scaling: "signed_log"  # Options: "none", "log", "sqrt", "power", "asinh", "signed_log"
+  
+  # Blob parameters - a list of blob configurations for generating mock data
+  blobs_params:
+      - n_part: 1500
+        m_part: 0.99
+        pos_type: gaussian
+        pos_params:
+          sigma: 2.4
+          center: 16  
+        vel_type: circular
+        vel_params:
+          vel_factor: 0.1 
+          vel_dispersion: 0.05
+          distrib: True
+
+  observable: ["density"] # Observables to compute
+
+
+# --- LIKELIHOOD SETTINGS ---
+likelihood_type: ll1   # Options: "ll1", "ll2"
+likelihood_kwargs: 
+  noise: 10  # Standard deviation of instrumental noise
+
+# --- PRIOR SETTINGS ---
+prior_type: blob_uniform  # Use blob-specific prior
+prior_params:
+  blob0_sigma: {low: 0.5, high: 5.0} 
+  blob0_center: {low: 12.0, high: 20.0}
+
+# --- SAMPLER SETTINGS ---
+sampler: rwm           # Random Walk Metropolis
+num_samples: 2000        # Number of MCMC samples to draw
+sampling_seed: 12345    # Random seed for reproducibility
+progress_bar: false  # Show progress bar during sampling
+    
+initial_position: 
+  blob0_sigma: 2.2
+  blob0_center: 16.3

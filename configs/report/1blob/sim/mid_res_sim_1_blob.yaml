@@ -1,0 +1,71 @@
+# Configuration for gradient sanity check
+
+# Use with: python src/run.py --config configs/report/1blob/sim/mid_res_sim_1_blob.yaml
+
+cuda_visible_devices: '3'
+
+mode : sim  # Experiment mode (options: "sim", "sampling", "mle", "grid")
+
+save : true
+
+comparison_settings:
+  do_comparison: true
+  reference_data_path: "results/report/1halo/data/128"  # Base directory path
+  resize_method: "fourier" 
+
+# --- PLOT & VIDEO SETTINGS ---
+plot_settings:
+  enable_energy_tracking: true  # Calculate and plot energy evolution
+  density_field_plot: 
+    do: true  # Plot density field
+  trajectories_plot: 
+    do: true  # Plot particle trajectories
+    num_trajectories: 5     # Number of particle trajectories to plot
+    zoom_for_trajectories: true  # Zoom in on trajectories
+  timeseries_plot: 
+    do: true  # Plot time series of particle positions
+    n_timesteps: 10        # Number of timesteps to plot
+  velocity_plot: 
+    do: true  
+  generate_video: 
+    do: false  # Generate video of the simulation
+    video_fps: 30            # Video frames per second
+    video_dpi: 200           # Video resolution DPI
+  fft_plot:
+    do: true
+  power_spectrum_plot:
+    do: true
+  units:
+    kpc_per_pixel: 3.125
+    msun_per_mass_unit: 6.77e6
+    gyr_per_time_unit: 1.0
+    jouleE50_per_unit : 1.27e-6
+
+# --- FORWARD MODEL PARAMETERS ---
+model_params:  
+  # General parameters
+  G: 1              # Gravitational constant
+  length: 64          # Box size
+  softening: 1      # Softening length
+  t_f: 6.0            # Final time
+  dt: 0.01            # Time step
+  data_seed: 42       # Random seed for data generation
+  solver: "LeapfrogMidpoint" # Solver type: "LeapfrogMidpoint", "Dopri5", "Dopri8", "Tsit5", "Heun, "Midpoint"
+  
+  # Density field scaling options
+  density_scaling: "none"  # Options: "none", "log", "sqrt", "power", "asinh", "signed_log"
+  velocity_scaling: "none"  # Options: "none", "log", "sqrt", "power", "asinh", "signed_log"
+  
+  # Blob parameters - a list of blob configurations for generating mock data
+  blobs_params:
+      - n_part: 2000
+        m_part: 1.5 
+        pos_type: gaussian
+        pos_params:
+          sigma: 4.8  
+          center: 32
+        vel_type: circular
+        vel_params:
+          vel_factor: 0.1 
+          vel_dispersion: 0.05
+          distrib: True

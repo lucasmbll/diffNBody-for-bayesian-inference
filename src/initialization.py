@@ -88,23 +88,26 @@ def initialize_virial_velocities(positions, virial_ratio, G, m_part, vel_key):
     return velocities
 
 @jax.jit
-def initialize_circular_velocities_proxy(positions, vel_factor, G, m_part, softening):
+def initialize_circular_velocities_proxy(positions, vel_factor, vel_dispersion, G, m_part, softening, vel_key):
     n_part = positions.shape[0]
     center = jnp.mean(positions, axis=0)     # Calculate the center of mass
     M = n_part * m_part     # Calculate total mass
     rel_pos = positions - center     # Calculate relative positions from center
     r = jnp.linalg.norm(rel_pos, axis=1)     # Calculate radial distances
     M_enclosed = M * r / (jnp.max(r) + 1e-6)      # Simple approximation for enclosed mass: M(r) ∝ r for small r
-    v_circ = jnp.sqrt(G * M_enclosed / jnp.sqrt(r**2 + softening**2)) * vel_factor     # Calculate circular velocity magnitude
+    v_circ = jnp.sqrt(G * M_enclosed / jnp.sqrt(r**2 + softening**2))   # Calculate circular velocity magnitude
     z_axis = jnp.array([0.0, 0.0, 1.0])     # Compute direction perpendicular to radius vector in the x-y plane
     perp = jnp.cross(rel_pos, z_axis)
     perp_norm = jnp.linalg.norm(perp, axis=1, keepdims=True)     # Safe normalization of perpendicular vector
     perp_normalized = perp / (perp_norm + 1e-6) 
     velocities = v_circ[:, None] * perp_normalized
+    order_magnitude = jnp.mean(jnp.linalg.norm(velocities, axis=1))
+    noise = jax.random.normal(vel_key, velocities.shape) * vel_dispersion * order_magnitude  # Add random dispersion proportional to the amplitude of circular velocities
+    velocities = (velocities + noise) * vel_factor
     return velocities
 
 @jax.jit
-def initialize_circular_velocities_gaussian(positions, vel_factor, G, m_part, sigma, softening):
+def initialize_circular_velocities_gaussian(positions, vel_factor, vel_dispersion, G, m_part, sigma, softening, vel_key):
     n_part = positions.shape[0]
     # Calculate the center of mass (should be close to the blob center)
     center = jnp.mean(positions, axis=0)
@@ -117,7 +120,7 @@ def initialize_circular_velocities_gaussian(positions, vel_factor, G, m_part, si
     # Calculate enclosed mass using the Gaussian profile
     M_enclosed = blob_enclosed_mass_gaussian(r, M, sigma)
     # Calculate circular velocity magnitude
-    v_circ = jnp.sqrt(G * M_enclosed / jnp.sqrt(r**2 + softening**2)) * vel_factor
+    v_circ = jnp.sqrt(G * M_enclosed / jnp.sqrt(r**2 + softening**2)) 
     # Compute direction perpendicular to radius vector in the x-y plane
     z_axis = jnp.array([0.0, 0.0, 1.0])
     perp = jnp.cross(rel_pos, z_axis)
@@ -125,38 +128,48 @@ def initialize_circular_velocities_gaussian(positions, vel_factor, G, m_part, si
     perp_norm = jnp.linalg.norm(perp, axis=1, keepdims=True)
     perp_normalized = perp / (perp_norm + 1e-6)
     velocities = v_circ[:, None] * perp_normalized
+    order_magnitude = jnp.mean(jnp.linalg.norm(velocities, axis=1))
+    # Add random dispersion proportional to the amplitude of circular velocities
+    noise = jax.random.normal(vel_key, velocities.shape) * vel_dispersion * order_magnitude
+    velocities = (velocities + noise) * vel_factor
     return velocities
 
 @jax.jit
-def initialize_circular_velocities_nfw(positions, vel_factor, G, m_part, c, rs, softening):
+def initialize_circular_velocities_nfw(positions, vel_factor, vel_dispersion, G, m_part, c, rs, softening, vel_key):
     n_part = positions.shape[0]
     center = jnp.mean(positions, axis=0)
     M = n_part * m_part
     rel_pos = positions - center
     r = jnp.linalg.norm(rel_pos, axis=1)
     M_enclosed = blob_enclosed_mass_nfw(r, M, rs, c)
-    v_circ = jnp.sqrt(G * M_enclosed / jnp.sqrt(r**2 + softening**2)) * vel_factor
+    v_circ = jnp.sqrt(G * M_enclosed / jnp.sqrt(r**2 + softening**2)) 
     z_axis = jnp.array([0.0, 0.0, 1.0])
     perp = jnp.cross(rel_pos, z_axis)
     perp_norm = jnp.linalg.norm(perp, axis=1, keepdims=True)
     perp_normalized = perp / (perp_norm + 1e-6)
     velocities = v_circ[:, None] * perp_normalized
+    order_magnitude = jnp.mean(jnp.linalg.norm(velocities, axis=1))
+    noise = jax.random.normal(vel_key, velocities.shape) * vel_dispersion * order_magnitude
+    velocities = (velocities + noise) * vel_factor
     return velocities
 
 @jax.jit
-def initialize_circular_velocities_plummer(positions, vel_factor, G, m_part, rs, softening):
+def initialize_circular_velocities_plummer(positions, vel_factor, vel_dispersion, G, m_part, rs, softening, vel_key):
     n_part = positions.shape[0]
     center = jnp.mean(positions, axis=0)
     M = n_part * m_part
     rel_pos = positions - center
     r = jnp.linalg.norm(rel_pos, axis=1)
     M_enclosed = blob_enclosed_mass_plummer(r, M, rs)
-    v_circ = jnp.sqrt(G * M_enclosed / jnp.sqrt(r**2 + softening**2)) * vel_factor
+    v_circ = jnp.sqrt(G * M_enclosed / jnp.sqrt(r**2 + softening**2)) 
     z_axis = jnp.array([0.0, 0.0, 1.0])
     perp = jnp.cross(rel_pos, z_axis)
     perp_norm = jnp.linalg.norm(perp, axis=1, keepdims=True)
     perp_normalized = perp / (perp_norm + 1e-6)
     velocities = v_circ[:, None] * perp_normalized
+    order_magnitude = jnp.mean(jnp.linalg.norm(velocities, axis=1))
+    noise = jax.random.normal(vel_key, velocities.shape) * vel_dispersion * order_magnitude
+    velocities = (velocities + noise) * vel_factor
     return velocities
 
 # --- Combined initialization function ---
@@ -238,10 +251,20 @@ def initialize_blob(params_blob, fixed_params_blob, other_params_blob, params_in
     vel_type = other_params_blob['vel_type']
     
     if vel_type == 'cold':
-        vel_dispersion = other_params_blob.get(vel_dispersion)
+        if 'vel_dispersion' in changing_param_order:
+            vel_dispersion_idx = changing_param_order.index('vel_dispersion')
+            vel_dispersion = params_blob[vel_dispersion_idx]
+        else:
+            vel_dispersion_idx = fixed_param_order.index('vel_dispersion')
+            vel_dispersion = fixed_params_blob[vel_dispersion_idx]
         velocities = initialize_cold_velocities(positions, vel_dispersion, vel_key)
     elif vel_type == 'virial':
-        virial_ratio = other_params_blob.get(virial_ratio)
+        if 'vel_dispersion' in changing_param_order:
+            virial_ratio_idx = changing_param_order.index('virial_ratio')
+            virial_ratio = params_blob[virial_ratio_idx]
+        else:
+            virial_ratio_idx = fixed_param_order.index('virial_ratio')
+            virial_ratio = fixed_params_blob[virial_ratio_idx]
         velocities = initialize_virial_velocities(positions, virial_ratio, G, m_part, vel_key)
     elif vel_type == 'circular':
         distrib = other_params_blob.get('distrib', False)
@@ -251,15 +274,21 @@ def initialize_blob(params_blob, fixed_params_blob, other_params_blob, params_in
         else:
             vel_factor_idx = fixed_param_order.index('vel_factor')
             vel_factor = fixed_params_blob[vel_factor_idx]
+        if 'vel_dispersion' in changing_param_order:
+            vel_dispersion_idx = changing_param_order.index('vel_dispersion')
+            vel_dispersion = params_blob[vel_dispersion_idx]
+        else:
+            vel_dispersion_idx = fixed_param_order.index('vel_dispersion')
+            vel_dispersion = fixed_params_blob[vel_dispersion_idx]
         if distrib:
             if pos_type == 'gaussian':
-                velocities = initialize_circular_velocities_gaussian(positions, vel_factor, G, m_part, sigma, softening)
+                velocities = initialize_circular_velocities_gaussian(positions, vel_factor, vel_dispersion, G, m_part, sigma, softening, vel_key)
             elif pos_type == 'nfw':
-                velocities = initialize_circular_velocities_nfw(positions, vel_factor, G, m_part, c, rs, softening)
+                velocities = initialize_circular_velocities_nfw(positions, vel_factor, vel_dispersion, G, m_part, c, rs, softening, vel_key)
             elif pos_type == 'plummer':
-                velocities = initialize_circular_velocities_plummer(positions, vel_factor, G, m_part, rs, softening)
+                velocities = initialize_circular_velocities_plummer(positions, vel_factor, vel_dispersion, G, m_part, rs, softening, vel_key)
         else:
-            velocities = initialize_circular_velocities_proxy(positions, vel_factor, G, m_part, softening)
+            velocities = initialize_circular_velocities_proxy(positions, vel_factor, vel_dispersion, G, m_part, softening, vel_key)
     else:
         raise ValueError(f"Unknown velocity type: {vel_type}")
     

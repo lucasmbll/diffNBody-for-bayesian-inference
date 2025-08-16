@@ -46,6 +46,22 @@ def blob_enclosed_mass_plummer(r, M, rs):
     return M * enclosed
 
 
+def lagrangian_radius(positions, masses, fraction, length=None):
+    total_mass = jnp.sum(masses)
+    com = jnp.sum(positions * masses[:, None], axis=0) / total_mass
+    rel = positions - com
+    if length is not None:
+        rel = rel - length * jnp.round(rel / length)
+    r = jnp.sqrt(jnp.sum(rel**2, axis=1))
+    idx = jnp.argsort(r)
+    r_sorted = r[idx]
+    m_sorted = masses[idx]
+    cum_mass = jnp.cumsum(m_sorted)
+    target = fraction * total_mass
+    k = jnp.searchsorted(cum_mass, target, side="left")
+    k = jnp.clip(k, 0, r_sorted.shape[0]-1)
+    return r_sorted[k]
+
 @partial(jax.jit, static_argnames=['scaling_type'])
 def apply_density_scaling(density_field, scaling_type="none"):
     if scaling_type == "none":
@@ -209,7 +225,12 @@ def extract_blob_parameters(blob_config, mode, infered_params):
             fixed_params.append(vel_params['vel_factor'])
             param_info['fixed_param_order'].append('vel_factor')
         other_params['distrib'] = vel_params['distrib'] 
-
+        if mode in ['sampling', 'mle', 'grid'] and 'vel_dispersion' in infered_params:
+                changing_params.append(vel_params['vel_dispersion'])
+                param_info['changing_param_order'].append('vel_dispersion')
+        else:
+            fixed_params.append(vel_params['vel_dispersion'])
+            param_info['fixed_param_order'].append('vel_dispersion')
     elif vel_type == 'cold':
         if mode in ['sampling', 'mle', 'grid'] and 'vel_dispersion' in infered_params:
                 changing_params.append(vel_params['vel_dispersion'])
@@ -322,6 +343,10 @@ def extract_params_to_infer(blob, blob_idx, prior_params, initial_position):
         if (vel_key in prior_params and 
             vel_key in initial_position):
             params_to_infer.add('vel_factor')
+        vel_key = f"blob{blob_idx}_vel_dispersion"
+        if (vel_key in prior_params and 
+            vel_key in initial_position):
+            params_to_infer.add('vel_dispersion')
             
     elif blob['vel_type'] == 'cold':
         vel_key = f"blob{blob_idx}_vel_dispersion"
@@ -393,6 +418,9 @@ def extract_params_to_evaluate(blob, blob_idx, prior_params):
         vel_key = f"blob{blob_idx}_vel_factor"
         if (vel_key in prior_params):
             params_to_infer.add('vel_factor')
+        vel_key = f"blob{blob_idx}_vel_dispersion"
+        if (vel_key in prior_params):
+            params_to_infer.add('vel_dispersion')
             
     elif blob['vel_type'] == 'cold':
         vel_key = f"blob{blob_idx}_vel_dispersion"
@@ -462,6 +490,9 @@ def extract_params_to_optimize(blob, blob_idx, initial_position):
         vel_key = f"blob{blob_idx}_vel_factor"
         if vel_key in initial_position:
             params_to_infer.add('vel_factor')
+        vel_key = f"blob{blob_idx}_vel_dispersion"
+        if vel_key in initial_position:
+            params_to_infer.add('vel_dispersion')
             
     elif blob['vel_type'] == 'cold':
         vel_key = f"blob{blob_idx}_vel_dispersion"
@@ -541,32 +572,64 @@ def prior_params_extract(prior_type, prior_params, params_infos):
         all_prior_params.append(jnp.array(blob_prior_params, dtype=jnp.float32))
     return jnp.stack(all_prior_params), params_labels
 
+def compute_fft_and_power_spectrum_3d(field, box_size):
+    # Get field dimensions
+    nx, ny, nz = field.shape
+    # Compute FFT
+    fft_field = jnp.fft.fftn(field)
+    # Compute k-space coordinates
+    kx = jnp.fft.fftfreq(nx, d=box_size/nx) * 2 * jnp.pi
+    ky = jnp.fft.fftfreq(ny, d=box_size/ny) * 2 * jnp.pi
+    kz = jnp.fft.fftfreq(nz, d=box_size/nz) * 2 * jnp.pi
+    # Create 3D k-grid
+    kx_grid, ky_grid, kz_grid = jnp.meshgrid(kx, ky, kz, indexing='ij')
+    k_mag = jnp.sqrt(kx_grid**2 + ky_grid**2 + kz_grid**2)
+    
+    # Compute power (|FFT|^2)
+    power_3d = jnp.abs(fft_field)**2
+    
+    # Normalize by volume - Fix: ensure float division to prevent overflow
+    volume = jnp.float32(box_size**3)
+    normalization = jnp.float32(nx * ny * nz)**2
+    power_3d = power_3d * volume / normalization
+    
+    # Create k-bins for spherical averaging
+    k_max = jnp.min(jnp.array([kx.max(), ky.max(), kz.max()]))
+    k_min = 2 * jnp.pi / box_size
+    
+    # Use logarithmic binning
+    n_bins = min(50, nx//4)  # Reasonable number of bins
+    k_bins = jnp.logspace(jnp.log10(k_min), jnp.log10(k_max), n_bins)
+    
+    # Spherically average the power spectrum
+    power_spectrum = jnp.zeros(len(k_bins) - 1)
+    k_centers = jnp.zeros(len(k_bins) - 1)
+    
+    for i in range(len(k_bins) - 1):
+        mask = (k_mag >= k_bins[i]) & (k_mag < k_bins[i + 1]) & (k_mag > 0)
+        if jnp.sum(mask) > 0:
+            power_spectrum = power_spectrum.at[i].set(jnp.mean(power_3d[mask]))
+            k_centers = k_centers.at[i].set(jnp.mean(k_mag[mask]))
+        else:
+            k_centers = k_centers.at[i].set((k_bins[i] + k_bins[i + 1]) / 2)
+    
+    return fft_field, k_centers, power_spectrum
 
-    ## TO BE CHECKED 
-"""
 
-def tune_step_size(sampler_class, log_posterior, initial_position, rng_key, num_trials=200, step_sizes=None):
-    import jax
-    if step_sizes is None:
-        step_sizes = np.logspace(-4, 0, 10)  # e.g. [1e-4, 1e-3, ..., 1.0]
-    best_rate = -1
-    best_step = None
-    for step_size in step_sizes:
-        sampler = sampler_class(log_posterior, step_size)
-        kernel = jax.jit(sampler.step)
-        state = sampler.init(initial_position)
-        keys = jax.random.split(rng_key, num_trials)
-        n_accepts = 0
-        for key in keys:
-            new_state, info = kernel(key, state)
-            if info.is_accepted:
-                n_accepts += 1
-            state = new_state
-        acceptance_rate = n_accepts / num_trials
-        print(f"step_size={step_size:.5f} => acceptance_rate={acceptance_rate:.3f}")
-        # You can implement your selection criteria here.
-        if 0.2 < acceptance_rate < 0.5 and acceptance_rate > best_rate:
-            best_rate = acceptance_rate
-            best_step = step_size
-    print(f"Selected step_size={best_step} with acceptance_rate={best_rate}")
-    return best_step"""
+def compute_fft_and_power_spectrum_3d_fields(fields, box_size):
+    field_names = ['density', 'vx', 'vy', 'vz']
+    fft_fields = []
+    k_centers_list = []  # Changed from k_centers to k_centers_list
+    power_specs = []
+    for i, name in enumerate(field_names):
+        field = fields[..., i]
+        fft_field, k_centers, power_spec = compute_fft_and_power_spectrum_3d(field, box_size)
+        fft_fields.append(fft_field)
+        k_centers_list.append(k_centers)  # Now appending to k_centers_list
+        power_specs.append(power_spec)
+    fft_field = jnp.stack(fft_fields, axis=-1)
+    power_spec = jnp.stack(power_specs, axis=-1)
+    k_centers = jnp.stack(k_centers_list, axis=-1)  # Stack the list, assign to k_centers
+    return fft_field, k_centers, power_spec
+
+

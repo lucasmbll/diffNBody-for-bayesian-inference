@@ -530,16 +530,18 @@ def plot_trace_subplots(mcmc_samples, theta, G, t_f, dt, softening, length, n_pa
         print("No parameters to plot")
         return None, None
 
-    fig, axes = plt.subplots(n_subplots, 1, figsize=(12, 3 * n_subplots), squeeze=False)
-    axes = axes.flatten()
+    # Create figure with 2 columns: main trace plots and zoom plots
+    fig = plt.figure(figsize=(20, 3 * n_subplots))
     
     # Add chain information to title if available
     if chain_samples is not None:
         n_chains = len(next(iter(chain_samples.values())))
         title += f' ({n_chains} chains)'
     
-    plt.suptitle(f"{title}\n{param_info}", fontsize=14)
-    plt.subplots_adjust(top=0.92)
+    plt.suptitle(f"{title}\n{param_info}", fontsize=16, y=0.98)
+    
+    # Adjust subplot spacing - increase top margin significantly
+    plt.subplots_adjust(top=0.85, bottom=0.1, left=0.08, right=0.95, hspace=0.4, wspace=0.3)
 
     # Use a better color palette for multiple chains
     if chain_samples is not None:
@@ -550,7 +552,14 @@ def plot_trace_subplots(mcmc_samples, theta, G, t_f, dt, softening, length, n_pa
             colors = plt.cm.rainbow(np.linspace(0, 1, n_chains))
     
     for idx, (param_name, comp_idx) in enumerate(subplot_info):
-        ax = axes[idx]
+        # Main trace plot (left column)
+        ax_main = plt.subplot(n_subplots, 2, 2*idx + 1)
+        
+        # Zoom plot (right column)
+        ax_zoom = plt.subplot(n_subplots, 2, 2*idx + 2)
+        
+        true_val = None
+        all_samples = []
         
         if chain_samples is not None:
             # Plot individual chains
@@ -561,74 +570,109 @@ def plot_trace_subplots(mcmc_samples, theta, G, t_f, dt, softening, length, n_pa
                 # Vector component
                 for chain_idx in range(n_chains):
                     chain_samples_comp = chain_data[chain_idx, :, comp_idx]
-                    ax.plot(chain_samples_comp, color=colors[chain_idx], 
-                           label=f'Chain {chain_idx+1}', alpha=0.8, linewidth=1)
+                    all_samples.extend(chain_samples_comp)
+                    ax_main.plot(chain_samples_comp, color=colors[chain_idx], 
+                               label=f'Chain {chain_idx+1}', alpha=0.8, linewidth=1)
+                    ax_zoom.plot(chain_samples_comp, color=colors[chain_idx], 
+                               alpha=0.8, linewidth=1)
                 
                 # Add true value line if available
                 if param_name in theta:
-                    true_val = theta[param_name]
-                    if isinstance(true_val, (list, tuple, np.ndarray)):
-                        true_val = np.array(true_val)
-                        if comp_idx < len(true_val):
-                            ax.axhline(true_val[comp_idx], color='red', linestyle='--', linewidth=2,
-                                     label=f'True value = {true_val[comp_idx]:.3f}')
-                ax.set_ylabel(f'{param_name}[{comp_idx}]')
-                ax.set_title(f'{param_name}[{comp_idx}]')
+                    true_val_array = theta[param_name]
+                    if isinstance(true_val_array, (list, tuple, np.ndarray)):
+                        true_val_array = np.array(true_val_array)
+                        if comp_idx < len(true_val_array):
+                            true_val = true_val_array[comp_idx]
+                            ax_main.axhline(true_val, color='red', linestyle='--', linewidth=2,
+                                         label=f'True value = {true_val:.3f}')
+                            ax_zoom.axhline(true_val, color='red', linestyle='--', linewidth=2)
+                ax_main.set_ylabel(f'{param_name}[{comp_idx}]')
+                ax_main.set_title(f'{param_name}[{comp_idx}] - Full Trace')
+                ax_zoom.set_title(f'{param_name}[{comp_idx}] - Zoom around True Value')
             else:
                 # Scalar parameter
                 for chain_idx in range(n_chains):
                     chain_samples_scalar = chain_data[chain_idx, :]
-                    ax.plot(chain_samples_scalar, color=colors[chain_idx], 
-                           label=f'Chain {chain_idx+1}', alpha=0.8, linewidth=1)
+                    all_samples.extend(chain_samples_scalar)
+                    ax_main.plot(chain_samples_scalar, color=colors[chain_idx], 
+                               label=f'Chain {chain_idx+1}', alpha=0.8, linewidth=1)
+                    ax_zoom.plot(chain_samples_scalar, color=colors[chain_idx], 
+                               alpha=0.8, linewidth=1)
                 
                 if param_name in theta:
                     true_val = theta[param_name]
                     if not isinstance(true_val, (list, tuple, np.ndarray)):
-                        ax.axhline(true_val, color='red', linestyle='--', linewidth=2,
-                                 label=f'True value = {true_val:.3f}')
-                ax.set_ylabel(param_name)
-                ax.set_title(param_name)
+                        ax_main.axhline(true_val, color='red', linestyle='--', linewidth=2,
+                                     label=f'True value = {true_val:.3f}')
+                        ax_zoom.axhline(true_val, color='red', linestyle='--', linewidth=2)
+                ax_main.set_ylabel(param_name)
+                ax_main.set_title(f'{param_name} - Full Trace')
+                ax_zoom.set_title(f'{param_name} - Zoom around True Value')
             
             # Only show legend for first few subplots to avoid clutter
             if idx < 3:
-                ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+                ax_main.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
         else:
             # Plot flattened samples (original behavior)
             samples = mcmc_samples[param_name]
             if comp_idx is not None:
                 # Vector component
-                ax.plot(samples[:, comp_idx], color=plt.cm.tab10(comp_idx), 
-                       label=f'{param_name}[{comp_idx}]', alpha=0.8)
+                samples_comp = samples[:, comp_idx]
+                all_samples = samples_comp
+                ax_main.plot(samples_comp, color=plt.cm.tab10(comp_idx), 
+                           label=f'{param_name}[{comp_idx}]', alpha=0.8)
+                ax_zoom.plot(samples_comp, color=plt.cm.tab10(comp_idx), alpha=0.8)
                 # Add true value line if available
                 if param_name in theta:
-                    true_val = theta[param_name]
-                    if isinstance(true_val, (list, tuple, np.ndarray)):
-                        true_val = np.array(true_val)
-                        if comp_idx < len(true_val):
-                            ax.axhline(true_val[comp_idx], color='red', linestyle='--',
-                                     label=f'True value = {true_val[comp_idx]:.3f}')
-                ax.set_ylabel(f'{param_name}[{comp_idx}]')
-                ax.set_title(f'{param_name}[{comp_idx}]')
-                ax.legend()
+                    true_val_array = theta[param_name]
+                    if isinstance(true_val_array, (list, tuple, np.ndarray)):
+                        true_val_array = np.array(true_val_array)
+                        if comp_idx < len(true_val_array):
+                            true_val = true_val_array[comp_idx]
+                            ax_main.axhline(true_val, color='red', linestyle='--',
+                                         label=f'True value = {true_val:.3f}')
+                            ax_zoom.axhline(true_val, color='red', linestyle='--')
+                ax_main.set_ylabel(f'{param_name}[{comp_idx}]')
+                ax_main.set_title(f'{param_name}[{comp_idx}] - Full Trace')
+                ax_zoom.set_title(f'{param_name}[{comp_idx}] - Zoom around True Value')
+                ax_main.legend()
             else:
                 # Scalar parameter
-                ax.plot(samples, label=param_name)
+                all_samples = samples
+                ax_main.plot(samples, label=param_name)
+                ax_zoom.plot(samples)
                 if param_name in theta:
                     true_val = theta[param_name]
                     if not isinstance(true_val, (list, tuple, np.ndarray)):
-                        ax.axhline(true_val, color='red', linestyle='--', 
-                                 label=f'True value = {true_val:.3f}')
-                ax.set_ylabel(param_name)
-                ax.set_title(param_name)
-                ax.legend()
+                        ax_main.axhline(true_val, color='red', linestyle='--', 
+                                     label=f'True value = {true_val:.3f}')
+                        ax_zoom.axhline(true_val, color='red', linestyle='--')
+                ax_main.set_ylabel(param_name)
+                ax_main.set_title(f'{param_name} - Full Trace')
+                ax_zoom.set_title(f'{param_name} - Zoom around True Value')
+                ax_main.legend()
+        print(true_val)
+        # Set zoom limits around true value if available
+        if true_val is not None and all_samples:
+            all_samples = np.array(all_samples)
+            # Zoom range of ±10% of the true value
+            zoom_range = abs(true_val) * 0.05
+            zoom_min = true_val - zoom_range
+            zoom_max = true_val + zoom_range
+            
+            ax_zoom.set_ylim(zoom_min, zoom_max)
         
-        ax.grid(True, alpha=0.3)
+        ax_main.grid(True, alpha=0.3)
+        ax_zoom.grid(True, alpha=0.3)
+        ax_zoom.set_ylabel('Zoomed view')
 
-    axes[-1].set_xlabel('Sample')
-    plt.tight_layout()
+    # Set x-label only for bottom plots
+    ax_main.set_xlabel('Sample')
+    ax_zoom.set_xlabel('Sample')
+    
     if save_path:
         fig.savefig(save_path, bbox_inches='tight', dpi=150)
-    return fig, axes
+    return fig, None
 
 def plot_corner_after_burnin(mcmc_samples, theta, G, t_f, dt, softening, length, n_part, method, param_order, burnin=0, save_path=None, chain_samples=None):
     """

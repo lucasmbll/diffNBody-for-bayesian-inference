@@ -67,7 +67,8 @@ def evaluate_likelihood(parameter_sets, mini_batch_size, log_posterior_fn, log_p
         log_post_val = log_posterior_fn(params)
         log_prior_val = log_prior_fn(params)
         log_likelihood_val = log_post_val - log_prior_val
-        return log_post_val, log_likelihood_val
+        chi2_val = -2.0 * log_likelihood_val
+        return log_post_val, log_likelihood_val, chi2_val
     
     # Get mini batch size from config
     n_grid_points = parameter_sets.shape[0]
@@ -76,6 +77,7 @@ def evaluate_likelihood(parameter_sets, mini_batch_size, log_posterior_fn, log_p
 
     log_posterior_values = []
     log_likelihood_values = []
+    chi2_values = []
     
     # Track NaN statistics
     nan_count = 0
@@ -93,22 +95,24 @@ def evaluate_likelihood(parameter_sets, mini_batch_size, log_posterior_fn, log_p
         try:
             # Try mini-batch evaluation
             vmapped_evaluate = jax.vmap(evaluate_single)
-            batch_log_post_val, batch_log_likelihood_val = vmapped_evaluate(batch_params)
+            batch_log_post_val, batch_log_likelihood_val, bacth_chi2_val = vmapped_evaluate(batch_params)
             
             # Process results and check for NaNs
             for i in range(batch_params.shape[0]):
                 total_evaluations += 1
                 log_post_val = float(batch_log_post_val[i])
                 log_lik_val = float(batch_log_likelihood_val[i])
-    
-                
+                chi2_val = float(bacth_chi2_val[i])
+
                 # Check for NaNs and Infs
                 log_post_is_nan = np.isnan(log_post_val)
                 log_post_is_inf = np.isinf(log_post_val)
                 log_lik_is_nan = np.isnan(log_lik_val)
                 log_lik_is_inf = np.isinf(log_lik_val)
+                chi2_is_nan = np.isnan(chi2_val)
+                chi2_is_inf = np.isinf(chi2_val)
             
-                if log_post_is_nan or log_lik_is_nan:
+                if log_post_is_nan or log_lik_is_nan or chi2_is_nan:
                     nan_count += 1
                     param_idx = start_idx + i
                     print(f"  NaN detected at parameter set {param_idx}:")
@@ -116,16 +120,18 @@ def evaluate_likelihood(parameter_sets, mini_batch_size, log_posterior_fn, log_p
                     print(f"    Log posterior NaN: {log_post_is_nan}")
                     print(f"    Log likelihood NaN: {log_lik_is_nan}")
                     
-                if log_post_is_inf or log_lik_is_inf:
+                if log_post_is_inf or log_lik_is_inf or chi2_is_inf:
                     inf_count += 1
                     param_idx = start_idx + i
                     print(f"  Inf detected at parameter set {param_idx}:")
                     print(f"    Parameters: {parameter_sets[param_idx]}")
                     print(f"    Log posterior Inf: {log_post_is_inf} (value: {log_post_val})")
                     print(f"    Log likelihood Inf: {log_lik_is_inf} (value: {log_lik_val})")
-            
+                
+                    
                 log_posterior_values.append(log_post_val)
                 log_likelihood_values.append(log_lik_val)
+                chi2_values.append(chi2_val)
                 
         except Exception as batch_e:
             failed_batches += 1
@@ -133,6 +139,7 @@ def evaluate_likelihood(parameter_sets, mini_batch_size, log_posterior_fn, log_p
             
     log_posterior_values = np.array(log_posterior_values)
     log_lik_values = np.array(log_likelihood_values)
+    chi2_values = np.array(chi2_values)
     
     # Print NaN/Inf summary
     print(f"\n=== NaN/Inf DETECTION SUMMARY ===")
@@ -156,8 +163,7 @@ def evaluate_likelihood(parameter_sets, mini_batch_size, log_posterior_fn, log_p
         print("  - Checking for parameter combinations that lead to singularities")
     
     # Create valid mask
-    valid_mask = ~(jnp.isnan(log_posterior_values) | jnp.isnan(log_lik_values))
-    
+    valid_mask = ~(jnp.isnan(log_posterior_values) | jnp.isnan(log_lik_values))    
     n_valid_evaluations = jnp.sum(valid_mask)
     print(f"There are {n_valid_evaluations} valid evaluations...")
     
@@ -171,7 +177,9 @@ def evaluate_likelihood(parameter_sets, mini_batch_size, log_posterior_fn, log_p
         'inf_count': inf_count,
         'failed_batches': failed_batches
     }    
-    return log_posterior_values, log_lik_values, evaluation_stats, valid_mask
+    return log_posterior_values, log_lik_values, chi2_values, evaluation_stats, valid_mask
+
+# In the `value_surface` function, add a circle mark to indicate the point of maximum posterior.
 
 def value_surface(data_params, parameter_sets, log_posterior_values, log_lik_values, param_names, valid_mask, output_dir):
     n_params_per_blob = parameter_sets.shape[2]
@@ -193,6 +201,10 @@ def value_surface(data_params, parameter_sets, log_posterior_values, log_lik_val
     param_pairs = [(param_names[i], param_names[j]) for i in range(len(param_names)) 
                    for j in range(i+1, len(param_names))]
     
+    # Find the point of maximum posterior
+    max_post_idx = jnp.argmax(log_posterior_values[valid_mask])
+    max_post_params = {param: param_arrays[param][valid_mask][max_post_idx] for param in param_names}
+
     for pair_idx, (param1, param2) in enumerate(param_pairs):
         fig = plt.figure(figsize=(20, 12))
         fig.suptitle(f'Surfaces: {param1} vs {param2}', fontsize=16)
@@ -206,6 +218,10 @@ def value_surface(data_params, parameter_sets, log_posterior_values, log_lik_val
         # Get true values for this pair
         true_p1 = float(true_param_values[param1])
         true_p2 = float(true_param_values[param2])
+        
+        # Get maximum posterior values for this pair
+        max_p1 = float(max_post_params[param1])
+        max_p2 = float(max_post_params[param2])
         
         try:
             # Simple averaging with numpy
@@ -224,6 +240,7 @@ def value_surface(data_params, parameter_sets, log_posterior_values, log_lik_val
             scatter1 = ax1.tricontourf(p1_avg, p2_avg, like_avg, levels=20, cmap='plasma', alpha=0.8)
             ax1.scatter(p1_avg, p2_avg, c=like_avg, cmap='viridis', s=10, alpha=0.6)
             ax1.scatter(true_p1, true_p2, c='red', s=100, marker='*', label=f'True ({true_p1:.3f}, {true_p2:.3f})')
+            ax1.scatter(max_p1, max_p2, c='blue', s=100, marker='o', label=f'Max Posterior ({max_p1:.3f}, {max_p2:.3f})')
             ax1.set_xlabel(param1)
             ax1.set_ylabel(param2)
             ax1.set_title('2D Likelihood Surface (Averaged)')
@@ -235,6 +252,7 @@ def value_surface(data_params, parameter_sets, log_posterior_values, log_lik_val
             scatter2 = ax2.tricontourf(p1_avg, p2_avg, post_avg, levels=20, cmap='plasma', alpha=0.8)
             ax2.scatter(p1_avg, p2_avg, c=post_avg, cmap='plasma', s=10, alpha=0.6)
             ax2.scatter(true_p1, true_p2, c='red', s=100, marker='*', label=f'True ({true_p1:.3f}, {true_p2:.3f})')
+            ax2.scatter(max_p1, max_p2, c='blue', s=100, marker='o', label=f'Max Posterior ({max_p1:.3f}, {max_p2:.3f})')
             ax2.set_xlabel(param1)
             ax2.set_ylabel(param2)
             ax2.set_title('2D Posterior Surface (Averaged)')
@@ -247,6 +265,7 @@ def value_surface(data_params, parameter_sets, log_posterior_values, log_lik_val
             ax3.plot_trisurf(p1_avg, p2_avg, like_avg, cmap='viridis', alpha=0.8)
             ax3.scatter(p1_avg, p2_avg, like_avg, c=like_avg, cmap='viridis', s=20, alpha=0.6)
             ax3.scatter(true_p1, true_p2, np.interp([true_p1, true_p2], [p1_avg.min(), p2_avg.min()], [like_avg.min(), like_avg.max()])[0], c='red', s=100, marker='*')
+            ax3.scatter(max_p1, max_p2, np.interp([max_p1, max_p2], [p1_avg.min(), p2_avg.min()], [like_avg.min(), like_avg.max()])[0], c='blue', s=100, marker='o')
             ax3.set_xlabel(param1)
             ax3.set_ylabel(param2)
             ax3.set_zlabel('Log Likelihood')
@@ -257,6 +276,7 @@ def value_surface(data_params, parameter_sets, log_posterior_values, log_lik_val
             ax4.plot_trisurf(p1_avg, p2_avg, post_avg, cmap='plasma', alpha=0.8)
             ax4.scatter(p1_avg, p2_avg, post_avg, c=post_avg, cmap='plasma', s=20, alpha=0.6)
             ax4.scatter(true_p1, true_p2, np.interp([true_p1, true_p2], [p1_avg.min(), p2_avg.min()], [post_avg.min(), post_avg.max()])[0], c='red', s=100, marker='*')
+            ax4.scatter(max_p1, max_p2, np.interp([max_p1, max_p2], [p1_avg.min(), p2_avg.min()], [post_avg.min(), post_avg.max()])[0], c='blue', s=100, marker='o')
             ax4.set_xlabel(param1)
             ax4.set_ylabel(param2)
             ax4.set_zlabel('Log Posterior')
@@ -378,7 +398,7 @@ def values_slices(data_params, parameter_sets, log_posterior_values, log_lik_val
             
             # Add text showing number of realizations averaged
             n_realizations = [np.sum(valid_mask & (param_arrays[param_name] == pv)) for pv in param_vals_plot]
-            ax.text(0.02, 0.98, f'Avg over {min(n_realizations)}-{max(n_realizations)} realizations', 
+            ax.text(0.02, 0.98, f'Avg over {max(n_realizations)} realizations', 
                    transform=ax.transAxes, verticalalignment='top', fontsize=10, 
                    bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
             
@@ -395,7 +415,7 @@ def values_slices(data_params, parameter_sets, log_posterior_values, log_lik_val
             ax.legend()
             
             # Add text showing number of realizations averaged
-            ax.text(0.02, 0.98, f'Avg over {min(n_realizations)}-{max(n_realizations)} realizations', 
+            ax.text(0.02, 0.98, f'Avg over {max(n_realizations)} realizations', 
                    transform=ax.transAxes, verticalalignment='top', fontsize=10,
                    bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
             fig_name = f'slice_{param_name}.png'
@@ -406,6 +426,26 @@ def values_slices(data_params, parameter_sets, log_posterior_values, log_lik_val
             
         else:
             print(f"No valid data for parameter {param_name}")
+
+def plot_chi2_distribution(chi2_values, dof, output_dir):
+    import scipy.stats as stats
+    print(chi2_values)
+    plt.figure(figsize=(8,6))
+    plt.hist(chi2_values, bins=30, density=True, alpha=0.6, label="Observed χ² values")
+    
+    # Theoretical chi² distribution
+    x = np.linspace(0, max(chi2_values)*1.1, 200)
+    plt.plot(x, stats.chi2.pdf(x, dof), 'r-', lw=2, label=f'χ² PDF (dof={dof})')
+    
+    plt.xlabel("χ² value")
+    plt.ylabel("Density")
+    plt.title("Goodness of Fit: χ² Distribution")
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    
+    fig_name = os.path.join(output_dir, "chi2_distribution.png")
+    plt.savefig(fig_name, dpi=300, bbox_inches='tight')
+    plt.close()
 
 def evaluate_gradients(parameter_sets, mini_batch_size, log_posterior_fn, log_prior_fn):
     # Create gradient functions

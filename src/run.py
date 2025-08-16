@@ -120,9 +120,41 @@ def main(config_path):
         data_params,
         data_key
     )
-     
+
     initial_field, final_field, final_observable_field, sol_ts, sol_ys, masses = result
 
+    print('Compute FFT and Power Spectrum of the simulation outputs')
+
+    from utils import compute_fft_and_power_spectrum_3d_fields
+
+    fft_initial, k_center_initial, power_spectrum_initial = compute_fft_and_power_spectrum_3d_fields(initial_field, length)
+    fft_final, k_center_final, power_spectrum_final = compute_fft_and_power_spectrum_3d_fields(final_field, length)
+    
+    """# Test difference between observable field of data and other generated from other params
+    # Generate ten other fields with different params
+    list_of_difference = []
+    list_se = []
+    for i in range(100):
+        random_key = jax.random.PRNGKey(i + 1)
+        random_params = jax.random.normal(random_key, shape=data_params.shape) + data_params
+        print(random_params)
+        _, _, observable_field, _, _, _ = model_fn(random_params, random_key)
+        residual = observable_field - final_observable_field
+        diff = jnp.linalg.norm(residual)
+        se = jnp.sum(residual ** 2)
+        list_of_difference.append(diff)
+        list_se.append(se)
+        print(f"Difference for random params {i + 1}: {diff:.4f}, Sum of squared errors: {se:.4f}")
+    print("Differences between observable field of data and other generated from other params:")
+    print(list_of_difference)
+    print("Sum of squared errors:")
+    print(list_se)
+    print("Mean difference:", jnp.mean(jnp.array(list_of_difference)))
+    print("Mean sum of squared errors:", jnp.mean(jnp.array(list_se)))
+    print("Standard deviation of differences:", jnp.std(jnp.array(list_of_difference)))
+    print("Standard deviation of sum of squared errors:", jnp.std(jnp.array(list_se)))
+
+    return """
     if mode == "sim":
         print(f"Simulation completed.")
         print(f"Total particles: {n_part}, Total mass: {total_mass:.2f}")
@@ -132,6 +164,15 @@ def main(config_path):
     
     # --- Plots and video ---
     plot_settings = config.get("plot_settings", {})
+    units = plot_settings["units"]
+    kpc_per_pixel = units.get("kpc_per_pixel", 1.0)  # kpc per pixel for density field plots
+    kpc_per_pixel = float(kpc_per_pixel)
+    msun_per_mass_unit = units.get("msun_per_mass_unit", 1.0)  # Solar mass per mass unit
+    msun_per_mass_unit = float(msun_per_mass_unit)  # Ensure it's a float
+    gyr_per_time_unit = units.get("gyr_per_time_unit", 1.0)  # Gyr per time unit
+    gyr_per_time_unit = float(gyr_per_time_unit)  # Ensure it's a float
+    jouleE50_per_unit = units.get("jouleE50_per_unit", 1.0)  # Energy unit conversion factor
+    jouleE50_per_unit = float(jouleE50_per_unit)  # Ensure it's a float
     
     # Pre-compute energy if needed for any plots
     enable_energy_tracking = plot_settings.get("enable_energy_tracking", True)
@@ -167,20 +208,31 @@ def main(config_path):
         print("Creating density fields and positions plot...")
         fig = plot_density_fields_and_positions(
             G, t_f, dt, length, n_part, initial_field, sol_ys[0, 0], final_field, sol_ys[-1, 0],
-            density_scaling=density_scaling, solver=solver,)
+            density_scaling=density_scaling, solver=solver, kpc_per_pixel=kpc_per_pixel)
         fig.savefig(os.path.join(base_dir, "density.png"))
         fig2 = plot_position_vs_radius_blobs(sol_ts, sol_ys, blobs_params, length, time_idx=0)
         fig2.savefig(os.path.join(base_dir, "position_vs_radius_blobs.png"))
         print("Density fields and positions plots saved successfully")
     
     if plot_settings['timeseries_plot'].get("do"):
-        from sim_plots import plot_timesteps
+        from sim_plots import plot_timesteps, plot_lagrangian_radii_fractionwise
         print("Creating timesteps plot...")
         plot_timesteps_num = config.get("plot_timesteps", 10)
         fig, _ = plot_timesteps(sol_ts, sol_ys, length, G, t_f, dt, n_part, num_timesteps=plot_timesteps_num, softening=softening, masses=masses, solver=solver,
                                 enable_energy_tracking=enable_energy_tracking, density_scaling=density_scaling,
-                                energy_data=energy_data)
+                                energy_data=energy_data, kpc_per_pixel=kpc_per_pixel, msun_per_mass_unit=msun_per_mass_unit,gyr_per_time_unit=gyr_per_time_unit, jouleE50_per_unit=jouleE50_per_unit)
         fig.savefig(os.path.join(base_dir, "timesteps.png"))
+        fig2 = plot_lagrangian_radii_fractionwise(
+            sol_ts=sol_ts,
+            sol_ys=sol_ys,
+            blobs_params=blobs_params,
+            masses=masses,
+            length=length,
+            kpc_per_pixel=kpc_per_pixel,
+            gyr_per_time_unit=gyr_per_time_unit,
+            fractions=(0.1, 0.5, 0.9)
+        )
+        fig2.savefig(os.path.join(base_dir, "lagrangian_radii_fractionwise.png"))
         print("Timesteps plot saved successfully")
     
     if plot_settings['trajectories_plot'].get("do"):
@@ -189,7 +241,7 @@ def main(config_path):
         num_trajectories = plot_settings['trajectories_plot'].get("num_trajectories", 10)
         zoom = plot_settings['trajectories_plot'].get("zoom_for_trajectories", True)
         fig = plot_trajectories(sol_ys, G, t_f, dt, length, n_part, solver, num_trajectories=num_trajectories, 
-                                zoom=zoom)
+                                zoom=zoom, kpc_per_pixel=kpc_per_pixel,)
         fig.savefig(os.path.join(base_dir, "trajectories.png"))
         print("Trajectories plot saved successfully")
     
@@ -228,20 +280,176 @@ def main(config_path):
             energy_data=energy_data
         )
         print(f"Simulation {video_type} video saved successfully")
+
+    if plot_settings.get('fft_plot', {}).get("do", False):
+        from sim_plots import plot_fft_fields
+        print("Creating FFT fields plot...")
+        fig_fft = plot_fft_fields(
+            fft_initial, fft_final, length, G, t_f, dt, n_part, solver, kpc_per_pixel)
+        fig_fft.savefig(os.path.join(base_dir, "fft_fields.png"), dpi=150, bbox_inches='tight')
+        print("FFT fields plot saved successfully")
+
+    if plot_settings.get('power_spectrum_plot', {}).get("do", False):
+        from sim_plots import plot_power_spectra
+        print("Creating power spectra plot...")
+        fig_ps, fig_ps_comp = plot_power_spectra(
+            k_center_initial, power_spectrum_initial, k_center_final, power_spectrum_final,
+            length, G, t_f, dt, n_part, solver, kpc_per_pixel)
+        fig_ps.savefig(os.path.join(base_dir, "power_spectra.png"), dpi=150, bbox_inches='tight')
+        fig_ps_comp.savefig(os.path.join(base_dir, "power_spectra_comparison.png"), dpi=150, bbox_inches='tight')
+        print("Power spectra plots saved successfully")
         
     shutil.copy(config_path, os.path.join(base_dir, "config.yaml")) # Save a copy of the config file in the result directory
+
+    if config.get("save", True ):
+        print("Saving final fields data...")
+        fields_data = {
+            'initial_field': np.array(initial_field),
+            'final_field': np.array(final_field),
+            'final_observable_field': np.array(final_observable_field),
+            'field_names': ['density', 'vx', 'vy', 'vz'],
+            'observable_names': observable,
+            'box_size': length,
+            'kpc_per_pixel': kpc_per_pixel,
+            'density_scaling': density_scaling,
+            'velocity_scaling': velocity_scaling
+        }
+        np.savez_compressed(os.path.join(base_dir, "final_fields.npz"), **fields_data)
+
+        # Save FFT data  
+        print("Saving FFT data...")
+        fft_data = {
+            'fft_initial_real': np.array(jnp.real(fft_initial)),
+            'fft_initial_imag': np.array(jnp.imag(fft_initial)),
+            'fft_final_real': np.array(jnp.real(fft_final)),
+            'fft_final_imag': np.array(jnp.imag(fft_final)),
+            'field_names': ['density', 'vx', 'vy', 'vz'],
+            'box_size': length,
+            'kpc_per_pixel': kpc_per_pixel,
+            'grid_shape': list(initial_field.shape[:3])
+        }
+        np.savez_compressed(os.path.join(base_dir, "fft_data.npz"), **fft_data)
+
+        # Save power spectrum data
+        print("Saving power spectrum data...")
+        power_spectrum_data = {
+            'k_center_initial': np.array(k_center_initial),
+            'power_spectrum_initial': np.array(power_spectrum_initial),
+            'k_center_final': np.array(k_center_final),
+            'power_spectrum_final': np.array(power_spectrum_final),
+            'field_names': ['density', 'vx', 'vy', 'vz'],
+            'box_size': length,
+            'kpc_per_pixel': kpc_per_pixel,
+            'units': {
+                'k_units': 'kpc^-1',
+                'power_units': 'arbitrary',
+                'box_size_units': 'pixels'
+            }
+        }
+        np.savez_compressed(os.path.join(base_dir, "power_spectrum_data.npz"), **power_spectrum_data)
+
+        print("Data files saved successfully:")
+        print(f"  - Final fields: {os.path.join(base_dir, 'final_fields.npz')}")
+        print(f"  - FFT data: {os.path.join(base_dir, 'fft_data.npz')}")
+        print(f"  - Power spectrum: {os.path.join(base_dir, 'power_spectrum_data.npz')}")
+
     
-    if mode == "sim":
+    if mode == "sim":       
+        comparison_settings = config.get("comparison_settings", {})
+        if comparison_settings.get("do_comparison", False):
+            print("Performing field comparison...")
+            
+            reference_base_path = comparison_settings.get("reference_data_path")
+            if reference_base_path:
+                # Construct paths to reference data files
+                if reference_base_path.endswith('.npz'):
+                    # Remove extension if provided
+                    reference_base_path = reference_base_path[:-4]
+                
+                ref_fields_path = f"{reference_base_path}/final_fields.npz"
+                ref_fft_path = f"{reference_base_path}/fft_data.npz"
+                ref_ps_path = f"{reference_base_path}/power_spectrum_data.npz"
+                
+                # Check if reference files exist
+                if all(os.path.exists(path) for path in [ref_fields_path, ref_fft_path, ref_ps_path]):
+                    print(f"Loading reference data from: {reference_base_path}")
+                    
+                    # Current data paths
+                    current_fields_path = os.path.join(base_dir, "final_fields.npz")
+                    current_fft_path = os.path.join(base_dir, "fft_data.npz")
+                    current_ps_path = os.path.join(base_dir, "power_spectrum_data.npz")
+                    
+                    # Import comparison functions
+                    from comparison_metrics import (
+                        compute_all_comparison_metrics_from_files, save_comparison_results_csv, 
+                        print_comparison_summary, plot_comparison_summary
+                    )
+                    
+                    # Choose resize method based on settings
+                    resize_method = comparison_settings.get("resize_method", "fourier")
+                    print(f"Using {resize_method} method for field resizing")
+                    
+                    # Compute comparison metrics using saved data files
+                    comparison_metrics = compute_all_comparison_metrics_from_files(
+                        current_fields_path, current_fft_path, current_ps_path,
+                        ref_fields_path, ref_fft_path, ref_ps_path,
+                        field_names=['density', 'vx', 'vy', 'vz'],
+                        resize_method=resize_method
+                    )
+                    
+                    # Save results in both CSV and NPZ formats
+                    save_comparison_results_csv(comparison_metrics, os.path.join(base_dir, "comparison_metrics.npz"))
+                    print_comparison_summary(comparison_metrics)
+                    
+                    # Create and save summary plots
+                    plot_comparison_summary(comparison_metrics, os.path.join(base_dir, "comparison_summary.png"))
+                    print("Comparison summary plots saved successfully")
+                    
+                else:
+                    print("Warning: Some reference data files not found:")
+                    print(f"  Fields: {ref_fields_path} {'✓' if os.path.exists(ref_fields_path) else '✗'}")
+                    print(f"  FFT: {ref_fft_path} {'✓' if os.path.exists(ref_fft_path) else '✗'}")
+                    print(f"  Power Spectrum: {ref_ps_path} {'✓' if os.path.exists(ref_ps_path) else '✗'}")
+                    
+                    # Fallback to fields-only comparison if available
+                    if os.path.exists(ref_fields_path):
+                        print("Falling back to fields-only comparison...")
+                        from comparison_metrics import compute_all_comparison_metrics
+                        
+                        ref_data = np.load(ref_fields_path)
+                        ref_final_field = ref_data['final_field']
+                        ref_box_size = ref_data.get('box_size', length)
+                        
+                        comparison_metrics = compute_all_comparison_metrics(
+                            final_field, ref_final_field, 
+                            box_size1=length, box_size2=ref_box_size,
+                            field_names=['density', 'vx', 'vy', 'vz'],
+                            resize_method=resize_method,
+                            k_centers1=k_center_final, power_spec1=power_spectrum_final,
+                            k_centers2=None, power_spec2=None,
+                            fft1=fft_final, fft2=None
+                        )
+                        
+                        save_comparison_results_csv(comparison_metrics, os.path.join(base_dir, "comparison_metrics.npz"))
+                        print_comparison_summary(comparison_metrics)
+                        plot_comparison_summary(comparison_metrics, os.path.join(base_dir, "comparison_summary.png"))
+                        print("Limited comparison completed (FFT/PS data not available for reference)")
+            else:
+                print("Warning: Reference data path not specified")
+
         print("Simulation completed.")
         return
 
     # Load data
-    data = final_observable_field
+    data = final_observable_field 
 
     # Likelihood
     likelihood_type = config.get("likelihood_type", None)
     likelihood_kwargs = config.get("likelihood_kwargs", {})
     noise = likelihood_kwargs.get("noise", 1.0)
+    
+    data = data + noise * jax.random.normal(data_key, data.shape)  
+
     from likelihood import log_likelihood_1
     log_likelihood_fn = lambda params: log_likelihood_1(params, data, noise, model_fn, data_key)
 
@@ -256,6 +464,29 @@ def main(config_path):
         from likelihood import log_posterior
         log_posterior_fn = lambda params: log_posterior(params, log_likelihood_fn, log_prior_fn)
 
+    """    import time
+    start = time.time()
+    grad = jax.grad(log_posterior_fn, argnums=0)
+    grad_value = grad(data_params)
+    end = time.time()
+    print(f"Gradient computation took {end - start:.4f} seconds")
+    print(f"Gradient at data parameters: {grad_value}")
+
+    import time
+    start = time.time()
+    grad = jax.grad(log_posterior_fn, argnums=0)
+    grad_value = grad(data_params)
+    end = time.time()
+    print(f"Gradient computation took {end - start:.4f} seconds")
+    print(f"Gradient at data parameters: {grad_value}")
+
+    params_modifed = data_params * 1.02
+    log_lik_value = log_likelihood_fn(data_params)
+    relative_gradient = grad_value / abs(log_lik_value)
+    print(f"Log-likelihood value: {log_lik_value}")
+    print(f"Relative gradient: {relative_gradient}")
+    """
+    
     # Initial parameters for sampling or MLE
     if mode in ["sampling", "mle"]:
         from utils import params_init
@@ -350,7 +581,7 @@ def main(config_path):
     
     elif mode == "grid":
         print("Starting grid search...")
-        from grid import create_parameter_grid, evaluate_likelihood, evaluate_gradients, value_surface, values_slices, quiver_grad_surface
+        from grid import create_parameter_grid, evaluate_likelihood, evaluate_gradients, plot_chi2_distribution, value_surface, values_slices, quiver_grad_surface
         # Extract hypercube parameters
         hypercube_params = config.get("hypercube_params", {})
         n_points_per_dim = hypercube_params.get("n_points_per_dim", 10)
@@ -367,7 +598,7 @@ def main(config_path):
         
         # Evaluate likelihood and gradients on the grid
         print(f"Evaluating likelihood for {len(parameter_sets)} parameter sets using mini-batch computation...")
-        log_posterior_values, log_lik_values, evaluation_stats, valid_mask = evaluate_likelihood(parameter_sets, mini_batch_size_value, log_posterior_fn, log_prior_fn)
+        log_posterior_values, log_lik_values, chi2_values, evaluation_stats, valid_mask = evaluate_likelihood(parameter_sets, mini_batch_size_value, log_posterior_fn, log_prior_fn)
 
         # Plotting
         print("Creating likelihood and posterior values marginal surfaces...")
@@ -375,19 +606,13 @@ def main(config_path):
 
         print("Creating 1D likelihood and posterior values marginal slices")
         values_slices(data_params, parameter_sets, log_posterior_values, log_lik_values, params_labels, valid_mask, base_dir)
-       
-       
-        if len(parameter_sets) < 50000:
-            print(f"Evaluating gradients for {len(parameter_sets)} parameter sets using mini-batch computation...")
-            posterior_gradient_values, likelihood_gradient_values, evaluation_stats_grad, valid_mask_grad = evaluate_gradients(parameter_sets, mini_batch_size_grad, log_posterior_fn, log_prior_fn)
 
-            print("Creating quiver plot of gradients on the parameter surface...")
-            quiver_grad_surface(parameter_sets, log_lik_values, log_posterior_values, likelihood_gradient_values, posterior_gradient_values, params_labels, valid_mask_grad, base_dir)
-        
-        else:
-            print(f"Skipping gradient evaluation and quiver plot for {len(parameter_sets)} parameter sets (too many points).")
+        print("Creating chi2 distribution plot...")
+        dof = len(observable) * length^3
+        plot_chi2_distribution(chi2_values, dof, base_dir)
 
-         # Parameter statistics
+       
+                # Parameter statistics
         if np.sum(valid_mask) > 0:
             print("=== BEST PARAMETERS ON THE GRID ===\n")
             # Best point
@@ -401,6 +626,17 @@ def main(config_path):
             for i in range(len(params_infos)):
                 for j, key in enumerate(params_infos[i]['changing_param_order']):
                     print(f"blob{i}_{key}: {best_params[i, j]:.6f}\n")
+       
+        if len(parameter_sets) < 50000:
+            print(f"Evaluating gradients for {len(parameter_sets)} parameter sets using mini-batch computation...")
+            posterior_gradient_values, likelihood_gradient_values, evaluation_stats_grad, valid_mask_grad = evaluate_gradients(parameter_sets, mini_batch_size_grad, log_posterior_fn, log_prior_fn)
+
+            print("Creating quiver plot of gradients on the parameter surface...")
+            quiver_grad_surface(parameter_sets, log_lik_values, log_posterior_values, likelihood_gradient_values, posterior_gradient_values, params_labels, valid_mask_grad, base_dir)
+        
+        else:
+            print(f"Skipping gradient evaluation and quiver plot for {len(parameter_sets)} parameter sets (too many points).")
+
         return
     
 

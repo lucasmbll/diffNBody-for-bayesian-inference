@@ -1,0 +1,61 @@
+# Detailed configuration for comprehensive solver benchmarking
+# Use with: python src/benchmark.py --config configs/benchmark.yaml
+
+cuda_visible_devices: '5'
+
+mode : benchmark  # Experiment mode (options: "sim", "sampling", "mle", "grid", "benchmark")
+
+# --- FORWARD MODEL PARAMETERS ---
+model_params:  
+  # General parameters
+  G: 1              # Gravitational constant
+  length: 128          # Box size
+  softening: 1      # Softening length
+  t_f: 5.5            # Final time
+  dt: 0.0001            # Time step
+  data_seed: 42       # Random seed for data generation
+  solver: "LeapfrogMidpoint" # Solver type: "LeapfrogMidpoint", "Dopri5", "Dopri8", "Tsit5", "Heun, "Midpoint"
+  
+  # Density field scaling options
+  density_scaling: "log"  # Options: "none", "log", "sqrt", "power", "asinh", "signed_log"
+  velocity_scaling: "none"  # Options: "none", "log", "sqrt", "power", "asinh", "signed_log"
+  
+  # Blob parameters - a list of blob configurations for generating mock data
+  blobs_params:
+      - n_part: 5000
+        m_part: 4.7
+        pos_type: gaussian
+        pos_params:
+          sigma: 9.6  
+          center: 64
+        vel_type: circular
+        vel_params:
+          vel_factor: 0.1 
+          vel_dispersion: 0.05
+          distrib: True
+    
+
+# --- BENCHMARK PARAMETERS ---
+benchmark_params:
+  # List of solvers to benchmark
+  solvers:
+    - "LeapfrogMidpoint"  # Symplectic, good for long-term stability
+    - "Dopri5"           # Adaptive Runge-Kutta
+    - "Dopri8"           # Higher-order adaptive
+    - "Tsit5"            # Alternative adaptive method
+    - "Heun"             # Simple 2nd order
+    - "Midpoint"         # Simple 2nd order
+  
+  # List of timesteps to test (wider range)
+  timesteps:
+    - 0.2
+    - 0.1
+    - 0.05
+    - 0.02
+    - 0.01
+    - 0.005
+    - 0.002
+    - 0.001
+  
+  # Number of runs per configuration for better statistics
+  num_runs: 5
