@@ -1700,4 +1700,3 @@ def plot_power_spectra(k_center_initial, power_spectrum_initial, k_center_final,
     
     plt.tight_layout()
     return fig, fig2
-

@@ -208,7 +208,29 @@ def value_surface(data_params, parameter_sets, log_posterior_values, log_lik_val
     for pair_idx, (param1, param2) in enumerate(param_pairs):
         fig = plt.figure(figsize=(20, 12))
         fig.suptitle(f'Surfaces: {param1} vs {param2}', fontsize=16)
-        
+        param1_label = ''
+        param2_label = ''
+        if "center_x" in param1:
+            param1_label =f"$\\mu_x$"
+        elif "center_y" in param1:
+            param1_label =f"$\\mu_y$"
+        elif "center_z" in param1:
+            param1_label =f"$\\mu_z$"
+        elif "sigma" in param1:
+            param1_label =f"$\\sigma$"
+        else :
+            param1_label = param1
+        if "center_x" in param2:
+            param2_label =f"$\\mu_x$"
+        elif "center_y" in param2:
+            param2_label =f"$\\mu_y$"
+        elif "center_z" in param2:
+            param2_label =f"$\\mu_z$"
+        elif "sigma" in param2:
+            param2_label =f"$\\sigma$"
+        else :
+            param2_label = param2            
+
         # Get parameter grids
         p1_vals = param_arrays[param1][valid_mask]
         p2_vals = param_arrays[param2][valid_mask]
@@ -251,11 +273,42 @@ def value_surface(data_params, parameter_sets, log_posterior_values, log_lik_val
             ax2 = plt.subplot(2, 2, 2)
             scatter2 = ax2.tricontourf(p1_avg, p2_avg, post_avg, levels=20, cmap='plasma', alpha=0.8)
             ax2.scatter(p1_avg, p2_avg, c=post_avg, cmap='plasma', s=10, alpha=0.6)
+
+                        # Posterior surface 2D
+            ax2 = plt.subplot(2, 2, 2)
+            scatter2 = ax2.tricontourf(p1_avg, p2_avg, post_avg, levels=20, cmap='plasma', alpha=0.8)
+            ax2.scatter(p1_avg, p2_avg, c=post_avg, cmap='plasma', s=10, alpha=0.6)
+
+            # Compute confidence contours (returns increasing levels inside [min,max])
+            levels = compute_confidence_contours(p1_avg, p2_avg, post_avg, [0.68, 0.95])
+
+            if len(levels) > 0:
+                # draw contours
+                contour_lines = ax2.tricontour(
+                    p1_avg, p2_avg, post_avg,
+                    levels=levels,
+                    colors='white', linewidths=2, linestyles='--'
+                )
+                # label with matching CLs
+                cl_labels = [f"{int(cl*100)}%" for cl in [0.68, 0.95][:len(levels)]]
+                fmt_map = {lvl: lab for lvl, lab in zip(levels, cl_labels)}
+                ax2.clabel(contour_lines, inline=True, fontsize=10, fmt=fmt_map)
+
+
+            # Update the scatter point labels
             ax2.scatter(true_p1, true_p2, c='red', s=100, marker='*', label=f'True ({true_p1:.3f}, {true_p2:.3f})')
-            ax2.scatter(max_p1, max_p2, c='blue', s=100, marker='o', label=f'Max Posterior ({max_p1:.3f}, {max_p2:.3f})')
-            ax2.set_xlabel(param1)
-            ax2.set_ylabel(param2)
-            ax2.set_title('2D Posterior Surface (Averaged)')
+            #map_uncertainties = compute_map_uncertainties(parameter_sets, log_posterior_values, valid_mask, param_names)
+
+            # Update the scatter point labels to show uncertainties
+            #map_p1_unc = map_uncertainties[param1]
+            #map_p2_unc = map_uncertainties[param2]
+
+            ax2.scatter(max_p1, max_p2, c='blue', s=100, marker='o', 
+                    label=f'MAP ({max_p1:.3f}, {max_p2:.3f})')
+
+            ax2.set_xlabel(param1_label)
+            ax2.set_ylabel(param2_label)
+            ax2.set_title('2D Posterior Surface with Confidence Levels')
             ax2.legend()
             plt.colorbar(scatter2, ax=ax2, label='Log Posterior')
             
@@ -266,8 +319,8 @@ def value_surface(data_params, parameter_sets, log_posterior_values, log_lik_val
             ax3.scatter(p1_avg, p2_avg, like_avg, c=like_avg, cmap='viridis', s=20, alpha=0.6)
             ax3.scatter(true_p1, true_p2, np.interp([true_p1, true_p2], [p1_avg.min(), p2_avg.min()], [like_avg.min(), like_avg.max()])[0], c='red', s=100, marker='*')
             ax3.scatter(max_p1, max_p2, np.interp([max_p1, max_p2], [p1_avg.min(), p2_avg.min()], [like_avg.min(), like_avg.max()])[0], c='blue', s=100, marker='o')
-            ax3.set_xlabel(param1)
-            ax3.set_ylabel(param2)
+            ax3.set_xlabel(param1_label)
+            ax3.set_ylabel(param2_label)
             ax3.set_zlabel('Log Likelihood')
             ax3.set_title('3D Likelihood Surface (Averaged)')
             
@@ -277,8 +330,8 @@ def value_surface(data_params, parameter_sets, log_posterior_values, log_lik_val
             ax4.scatter(p1_avg, p2_avg, post_avg, c=post_avg, cmap='plasma', s=20, alpha=0.6)
             ax4.scatter(true_p1, true_p2, np.interp([true_p1, true_p2], [p1_avg.min(), p2_avg.min()], [post_avg.min(), post_avg.max()])[0], c='red', s=100, marker='*')
             ax4.scatter(max_p1, max_p2, np.interp([max_p1, max_p2], [p1_avg.min(), p2_avg.min()], [post_avg.min(), post_avg.max()])[0], c='blue', s=100, marker='o')
-            ax4.set_xlabel(param1)
-            ax4.set_ylabel(param2)
+            ax4.set_xlabel(param1_label)
+            ax4.set_ylabel(param2_label)
             ax4.set_zlabel('Log Posterior')
             ax4.set_title('3D Posterior Surface (Averaged)')
             
@@ -302,6 +355,49 @@ def value_surface(data_params, parameter_sets, log_posterior_values, log_lik_val
         plt.tight_layout()
         plt.savefig(dir, dpi=300, bbox_inches='tight')
         plt.close()
+
+def compute_confidence_contours(p1_vals, p2_vals, post_vals, confidence_levels=[0.68, 0.95]):
+    """
+    Return contour levels in *increasing* order for log-posterior 'post_vals'.
+    """
+    # Convert to probabilities relative to max log posterior
+    max_post = np.nanmax(post_vals)
+    log_post_normalized = post_vals - max_post
+    probabilities = np.exp(log_post_normalized)
+
+    # Build cumulative mass over descending probs
+    sorted_probs = np.sort(probabilities)[::-1]
+    cdf = np.cumsum(sorted_probs)
+    cdf /= cdf[-1]
+
+    # Map each CL to a probability threshold, then back to log-post level
+    levels = []
+    for cl in confidence_levels:
+        idx = np.searchsorted(cdf, cl, side="left")
+        if idx >= len(sorted_probs):
+            continue
+        prob_threshold = sorted_probs[idx]
+        level = np.log(prob_threshold) + max_post  # a log-posterior *value*
+        levels.append(level)
+
+    # Sanitize: finite, unique, strictly increasing, and inside data range
+    levels = np.asarray(levels, dtype=float)
+    levels = levels[np.isfinite(levels)]
+    levels = np.unique(levels)
+
+    # Enforce strictly increasing and clip to Z-range
+    zmin = np.nanmin(post_vals)
+    zmax = np.nanmax(post_vals)
+    levels = levels[(levels > zmin) & (levels < zmax)]
+    levels.sort()
+
+    # In rare cases two levels collapse to same value; add tiny eps to separate
+    if levels.size > 1:
+        for i in range(1, levels.size):
+            if levels[i] <= levels[i-1]:
+                levels[i] = np.nextafter(levels[i-1], np.inf)
+
+    return levels.tolist()
 
 
 def values_slices(data_params, parameter_sets, log_posterior_values, log_lik_values, param_names, valid_mask, output_dir):
@@ -731,488 +827,44 @@ def quiver_grad_surface(parameter_sets, log_lik_values, log_posterior_values, li
         plt.savefig(dir, dpi=300, bbox_inches='tight')
         plt.close()
     
+def compute_map_uncertainties(parameter_sets, log_posterior_values, valid_mask, param_names):
+    """
+    Compute uncertainties around MAP estimate using the posterior distribution.
+    """
+    # Find MAP
+    valid_posterior = log_posterior_values[valid_mask]
+    max_idx = np.argmax(valid_posterior)
+    valid_indices = np.where(valid_mask)[0]
+    map_idx = valid_indices[max_idx]
+    
+    uncertainties = {}
+    n_params_per_blob = parameter_sets.shape[2]
+    
+    for idx, param_name in enumerate(param_names):
+        blob_idx = idx // n_params_per_blob
+        param_idx = idx % n_params_per_blob
+        param_values = parameter_sets[valid_mask, blob_idx, param_idx]
+        
+        # Convert to probabilities
+        valid_post = log_posterior_values[valid_mask]
+        max_post = np.max(valid_post)
+        #print(f"Max posterior for {param_name}: {max_post}")    
+        log_post_norm = valid_post - max_post
+        #print(f"Normalized log posterior for {param_name}: {log_post_norm}")
+        probs = np.exp(log_post_norm)
+        print(f"Probabilities for {param_name}: {probs}")
+        print(f"Sum of probabilities for {param_name}: {np.sum(probs)}")
+        probs = probs / np.sum(probs)
 
+        print(probs)
+        
+        # Compute weighted std deviation around MAP
+        map_value = float(parameter_sets[map_idx, blob_idx, param_idx])
+        #print(f"MAP value: {map_value}")
+        weighted_variance = np.sum(probs * (param_values - map_value)**2)
+        #print(f"Weighted variance for :{weighted_variance}")
+        uncertainty = np.sqrt(weighted_variance)
+        uncertainties[param_name] = uncertainty
+    
+    return uncertainties
 
-
-
-"""  
-def create_comprehensive_analysis(parameter_sets, log_posterior_values, gradient_values, param_names, config, evaluation_stats):
-    
-    import datetime
-    
-    # Create timestamped output directory
-    script_dir = Path(__file__).parent
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = script_dir / 'test_outputs' / 'gradient_check' / f'analysis_{timestamp}'
-    output_dir.mkdir(parents=True, exist_ok=True)
-    
-    print(f"Creating comprehensive analysis in: {output_dir}")
-    
-    # Extract parameter values into arrays
-    param_arrays = {}
-    for param_name in param_names:
-        values = []
-        for params in parameter_sets:
-            val = params[param_name]
-            if 'center' in param_name.lower():
-                values.append(float(val[0]))  # Use scalar value for center
-            else:
-                values.append(float(val))
-        param_arrays[param_name] = np.array(values)
-    
-    # Calculate likelihood values (posterior - prior)
-    likelihood_values = []
-    for i, params in enumerate(parameter_sets):
-        from likelihood import PRIOR_REGISTRY
-        prior_fn = PRIOR_REGISTRY.get(config['prior_type'])
-        try:
-            log_prior = prior_fn(params, config['prior_params'])
-            log_likelihood = log_posterior_values[i] - log_prior
-            likelihood_values.append(log_likelihood)
-        except:
-            likelihood_values.append(np.nan)
-    
-    likelihood_values = np.array(likelihood_values)
-    
-    # Calculate gradient norms and individual gradients
-    grad_norms = []
-    individual_grads = {param: [] for param in param_names}
-    
-    for i, grad_dict in enumerate(gradient_values):
-        if isinstance(grad_dict, dict):
-            total_grad_norm = 0.0
-            has_nan = False
-            for key, grad_val in grad_dict.items():
-                if isinstance(grad_val, (list, jnp.ndarray, np.ndarray)):
-                    if np.any(np.isnan(grad_val)):
-                        has_nan = True
-                        individual_grads[key].append(np.nan)
-                        break
-                    if 'center' in key.lower():
-                        grad_norm = float(jnp.linalg.norm(grad_val))
-                        individual_grads[key].append(grad_norm)
-                        total_grad_norm += float(jnp.sum(jnp.array(grad_val)**2))
-                    else:
-                        individual_grads[key].append(float(grad_val))
-                        total_grad_norm += float(grad_val**2)
-                else:
-                    if np.isnan(grad_val):
-                        has_nan = True
-                        individual_grads[key].append(np.nan)
-                        break
-                    individual_grads[key].append(float(grad_val))
-                    total_grad_norm += float(grad_val**2)
-            
-            if has_nan:
-                grad_norms.append(np.nan)
-            else:
-                grad_norms.append(np.sqrt(total_grad_norm))
-        else:
-            grad_norms.append(np.nan)
-            for key in param_names:
-                individual_grads[key].append(np.nan)
-    
-    grad_norms = np.array(grad_norms)
-    for key in individual_grads:
-        individual_grads[key] = np.array(individual_grads[key])
-    
-    
-    # Get parameter medians for fixing values
-    param_medians = {}
-    for param_name in param_names:
-        param_medians[param_name] = np.median(param_arrays[param_name][valid_mask])
-    
-    # 1. LIKELIHOOD VS PARAMETERS (Individual)
-    print("Creating likelihood vs parameters plots...")
-    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
-    fig.suptitle('Likelihood vs Individual Parameters', fontsize=16)
-    
-    for i, param_name in enumerate(param_names):
-        if i < 4:
-            row, col = i // 2, i % 2
-            ax = axes[row, col]
-            
-            # Plot likelihood vs this parameter, others fixed at median
-            param_vals = param_arrays[param_name][valid_mask]
-            like_vals = likelihood_values[valid_mask]
-            
-            # Sort by parameter values for smooth curves
-            sort_idx = np.argsort(param_vals)
-            ax.plot(param_vals[sort_idx], like_vals[sort_idx], 'o-', alpha=0.7)
-            ax.set_xlabel(param_name)
-            ax.set_ylabel('Log Likelihood')
-            ax.set_title(f'Likelihood vs {param_name}')
-            ax.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.savefig(output_dir / 'likelihood_vs_parameters.png', dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    # 2. POSTERIOR VS PARAMETERS (Individual)
-    print("Creating posterior vs parameters plots...")
-    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
-    fig.suptitle('Posterior vs Individual Parameters', fontsize=16)
-    
-    for i, param_name in enumerate(param_names):
-        if i < 4:
-            row, col = i // 2, i % 2
-            ax = axes[row, col]
-            
-            param_vals = param_arrays[param_name][valid_mask]
-            post_vals = log_posterior_values[valid_mask]
-            
-            sort_idx = np.argsort(param_vals)
-            ax.plot(param_vals[sort_idx], post_vals[sort_idx], 'o-', alpha=0.7)
-            ax.set_xlabel(param_name)
-            ax.set_ylabel('Log Posterior')
-            ax.set_title(f'Posterior vs {param_name}')
-            ax.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.savefig(output_dir / 'posterior_vs_parameters.png', dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    
-    
-    # 4. GRADIENT NORM VS PARAMETERS
-    print("Creating gradient norm plots...")
-    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
-    fig.suptitle('Gradient Norm vs Parameters', fontsize=16)
-    
-    for i, param_name in enumerate(param_names):
-        if i < 4:
-            row, col = i // 2, i % 2
-            ax = axes[row, col]
-            
-            param_vals = param_arrays[param_name][valid_mask]
-            grad_vals = grad_norms[valid_mask]
-            valid_grad_mask = ~np.isnan(grad_vals)
-            
-            if np.sum(valid_grad_mask) > 0:
-                sort_idx = np.argsort(param_vals[valid_grad_mask])
-                ax.semilogy(param_vals[valid_grad_mask][sort_idx], 
-                           grad_vals[valid_grad_mask][sort_idx], 'o-', alpha=0.7)
-                ax.set_xlabel(param_name)
-                ax.set_ylabel('Gradient Norm (log scale)')
-                ax.set_title(f'Gradient Norm vs {param_name}')
-                ax.grid(True, alpha=0.3)
-            else:
-                ax.text(0.5, 0.5, 'No valid gradients', transform=ax.transAxes, ha='center')
-    
-    plt.tight_layout()
-    plt.savefig(output_dir / 'gradient_norm_vs_parameters.png', dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    # 5. INDIVIDUAL GRADIENTS VS PARAMETERS
-    print("Creating individual gradient plots...")
-    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
-    fig.suptitle('Individual Gradients vs Parameters', fontsize=16)
-    
-    for i, param_name in enumerate(param_names):
-        if i < 4:
-            row, col = i // 2, i % 2
-            ax = axes[row, col]
-            
-            param_vals = param_arrays[param_name][valid_mask]
-            grad_vals = individual_grads[param_name][valid_mask]
-            valid_grad_mask = ~np.isnan(grad_vals)
-            
-            if np.sum(valid_grad_mask) > 0:
-                sort_idx = np.argsort(param_vals[valid_grad_mask])
-                ax.plot(param_vals[valid_grad_mask][sort_idx], 
-                       grad_vals[valid_grad_mask][sort_idx], 'o-', alpha=0.7)
-                ax.set_xlabel(param_name)
-                ax.set_ylabel(f'∂/∂{param_name}')
-                ax.set_title(f'Gradient w.r.t. {param_name}')
-                ax.grid(True, alpha=0.3)
-            else:
-                ax.text(0.5, 0.5, 'No valid gradients', transform=ax.transAxes, ha='center')
-    
-    plt.tight_layout()
-    plt.savefig(output_dir / 'individual_gradients_vs_parameters.png', dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    # 6. GRADIENT SURFACES (Parameter Pairs)
-    print("Creating gradient surfaces...")
-    for pair_idx, (param1, param2) in enumerate(param_pairs):
-        fig, axes = plt.subplots(1, 2, figsize=(15, 6))
-        fig.suptitle(f'Gradient Surfaces: {param1} vs {param2}', fontsize=14)
-        
-        p1_vals = param_arrays[param1][valid_mask]
-        p2_vals = param_arrays[param2][valid_mask]
-        grad1_vals = individual_grads[param1][valid_mask]
-        grad2_vals = individual_grads[param2][valid_mask]
-        
-        try:
-            # Gradient w.r.t. param1
-            ax = axes[0]
-            valid_grad1 = ~np.isnan(grad1_vals)
-            if np.sum(valid_grad1) > 10:  # Need sufficient points
-                scatter1 = ax.tricontourf(p1_vals[valid_grad1], p2_vals[valid_grad1], 
-                                        grad1_vals[valid_grad1], levels=20, cmap='RdBu_r', alpha=0.8)
-                ax.scatter(p1_vals[valid_grad1], p2_vals[valid_grad1], 
-                          c=grad1_vals[valid_grad1], cmap='RdBu_r', s=10, alpha=0.6)
-                plt.colorbar(scatter1, ax=ax, label=f'∂/∂{param1}')
-            ax.set_xlabel(param1)
-            ax.set_ylabel(param2)
-            ax.set_title(f'Gradient w.r.t. {param1}')
-            
-            # Gradient w.r.t. param2
-            ax = axes[1]
-            valid_grad2 = ~np.isnan(grad2_vals)
-            if np.sum(valid_grad2) > 10:
-                scatter2 = ax.tricontourf(p1_vals[valid_grad2], p2_vals[valid_grad2], 
-                                        grad2_vals[valid_grad2], levels=20, cmap='RdBu_r', alpha=0.8)
-                ax.scatter(p1_vals[valid_grad2], p2_vals[valid_grad2], 
-                          c=grad2_vals[valid_grad2], cmap='RdBu_r', s=10, alpha=0.6)
-                plt.colorbar(scatter2, ax=ax, label=f'∂/∂{param2}')
-            ax.set_xlabel(param1)
-            ax.set_ylabel(param2)
-            ax.set_title(f'Gradient w.r.t. {param2}')
-            
-        except Exception as e:
-            print(f"Warning: Could not create gradient surface for {param1} vs {param2}: {e}")
-            for ax in axes:
-                ax.text(0.5, 0.5, f'Gradient surface failed:\n{str(e)}', 
-                       transform=ax.transAxes, ha='center', va='center')
-        
-        plt.tight_layout()
-        plt.savefig(output_dir / f'gradient_surfaces_{param1}_vs_{param2}.png', dpi=300, bbox_inches='tight')
-        plt.close()
-    
-    # 7. NaN/INF DETECTION VISUALIZATION
-    print("Creating NaN/Inf detection plots...")
-    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
-    fig.suptitle('NaN/Inf Detection in Parameter Space', fontsize=16)
-    
-    # Create masks for different types of failures
-    nan_in_likelihood = np.isnan(likelihood_values)
-    nan_in_posterior = np.isnan(log_posterior_values)
-    nan_in_gradients = np.isnan(grad_norms)
-    inf_in_likelihood = np.isinf(likelihood_values)
-    
-    failure_types = [
-        ('NaN in Likelihood', nan_in_likelihood),
-        ('NaN in Posterior', nan_in_posterior),
-        ('NaN in Gradients', nan_in_gradients),
-        ('Inf in Likelihood', inf_in_likelihood)
-    ]
-    
-    for i, (title, mask) in enumerate(failure_types):
-        if i < 4:
-            row, col = i // 2, i % 2
-            ax = axes[row, col]
-            
-            if len(param_names) >= 2:
-                param1, param2 = param_names[0], param_names[1]
-                p1_vals = param_arrays[param1]
-                p2_vals = param_arrays[param2]
-                
-                # Plot all points in gray
-                ax.scatter(p1_vals, p2_vals, c='lightgray', alpha=0.3, s=20, label='Valid')
-                
-                # Highlight failed points in red
-                if np.sum(mask) > 0:
-                    ax.scatter(p1_vals[mask], p2_vals[mask], c='red', alpha=0.8, s=30, label='Failed')
-                
-                ax.set_xlabel(param1)
-                ax.set_ylabel(param2)
-                ax.set_title(f'{title}\n({np.sum(mask)}/{len(mask)} failures)')
-                ax.legend()
-                ax.grid(True, alpha=0.3)
-            else:
-                ax.text(0.5, 0.5, f'{title}\n{np.sum(mask)}/{len(mask)} failures', 
-                       transform=ax.transAxes, ha='center', va='center')
-    
-    plt.tight_layout()
-    plt.savefig(output_dir / 'nan_inf_detection.png', dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    # 8. PARAMETER SENSITIVITY ANALYSIS
-    print("Creating parameter sensitivity analysis...")
-    if np.sum(valid_mask) > 0:
-        # Find best point (highest posterior)
-        best_idx = np.argmax(log_posterior_values[valid_mask])
-        best_point_global = np.where(valid_mask)[0][best_idx]
-        best_params = {name: param_arrays[name][best_point_global] for name in param_names}
-        
-        fig, axes = plt.subplots(2, 2, figsize=(15, 12))
-        fig.suptitle('Parameter Sensitivity Around Best Point', fontsize=16)
-        
-        for i, param_name in enumerate(param_names):
-            if i < 4:
-                row, col = i // 2, i % 2
-                ax = axes[row, col]
-                
-                # Get parameter range around best point
-                param_range = param_arrays[param_name][valid_mask]
-                param_std = np.std(param_range)
-                param_center = best_params[param_name]
-                
-                # Create sensitivity curve
-                param_values_sens = np.linspace(param_center - 2*param_std, 
-                                              param_center + 2*param_std, 20)
-                
-                # Find points close to this sensitivity line
-                tolerance = param_std / 5
-                close_mask = valid_mask & (np.abs(param_arrays[param_name] - param_center) < 2*param_std)
-                
-                if np.sum(close_mask) > 3:
-                    p_vals = param_arrays[param_name][close_mask]
-                    like_vals = likelihood_values[close_mask]
-                    post_vals = log_posterior_values[close_mask]
-                    
-                    # Sort for smooth plotting
-                    sort_idx = np.argsort(p_vals)
-                    
-                    ax.plot(p_vals[sort_idx], like_vals[sort_idx], 'o-', 
-                           label='Likelihood', alpha=0.7)
-                    ax.plot(p_vals[sort_idx], post_vals[sort_idx], 's-', 
-                           label='Posterior', alpha=0.7)
-                    
-                    # Mark best point
-                    ax.axvline(param_center, color='red', linestyle='--', alpha=0.7, label='Best')
-                    
-                    ax.set_xlabel(param_name)
-                    ax.set_ylabel('Log Value')
-                    ax.set_title(f'Sensitivity: {param_name}')
-                    ax.legend()
-                    ax.grid(True, alpha=0.3)
-                else:
-                    ax.text(0.5, 0.5, 'Insufficient data\nfor sensitivity', 
-                           transform=ax.transAxes, ha='center', va='center')
-        
-        plt.tight_layout()
-        plt.savefig(output_dir / 'parameter_sensitivity.png', dpi=300, bbox_inches='tight')
-        plt.close()
-    
-    # 9. SAVE COMPREHENSIVE SUMMARY
-    print("Saving comprehensive summary...")
-    summary_file = output_dir / 'comprehensive_analysis_summary.txt'
-    with open(summary_file, 'w') as f:
-        f.write("=== COMPREHENSIVE PARAMETER ANALYSIS SUMMARY ===\n")
-        f.write(f"Generated on: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        f.write(f"Output directory: {output_dir}\n\n")
-        
-        # Data quality
-        f.write("=== DATA QUALITY ===\n")
-        f.write(f"Total parameter sets: {len(parameter_sets)}\n")
-        f.write(f"Valid evaluations: {np.sum(valid_mask)}\n")
-        f.write(f"NaN in likelihood: {np.sum(np.isnan(likelihood_values))}\n")
-        f.write(f"NaN in posterior: {np.sum(np.isnan(log_posterior_values))}\n")
-        f.write(f"NaN in gradients: {np.sum(np.isnan(grad_norms))}\n")
-        f.write(f"Inf in likelihood: {np.sum(np.isinf(likelihood_values))}\n")
-        f.write(f"Inf in posterior: {np.sum(np.isinf(log_posterior_values))}\n\n")
-        
-        # Sigma parameter analysis
-        sigma_params = [name for name in param_names if 'sigma' in name.lower()]
-        if sigma_params:
-            f.write("=== SIGMA PARAMETER ANALYSIS ===\n")
-            for sigma_param in sigma_params:
-                sigma_values = np.unique(param_arrays[sigma_param][valid_mask])
-                f.write(f"{sigma_param}:\n")
-                f.write(f"  Values tested: {sigma_values}\n")
-                f.write(f"  Range: [{np.min(sigma_values):.3f}, {np.max(sigma_values):.3f}]\n")
-                
-                # Average metrics for each sigma value
-                for sigma_val in sigma_values:
-                    sigma_mask = valid_mask & (param_arrays[sigma_param] == sigma_val)
-                    n_realizations = np.sum(sigma_mask)
-                    
-                    if n_realizations > 0:
-                        avg_like = np.mean(likelihood_values[sigma_mask][~np.isnan(likelihood_values[sigma_mask])])
-                        avg_post = np.mean(log_posterior_values[sigma_mask][~np.isnan(log_posterior_values[sigma_mask])])
-                        avg_grad = np.mean(grad_norms[sigma_mask][~np.isnan(grad_norms[sigma_mask])])
-                        
-                        f.write(f"  σ={sigma_val:.2f}: {n_realizations} realizations, "
-                               f"avg_like={avg_like:.3f}, avg_post={avg_post:.3f}, avg_grad={avg_grad:.3e}\n")
-            f.write("\n")
-        
-       
-            
-            # Gradient statistics
-            f.write("=== GRADIENT STATISTICS ===\n")
-            f.write(f"Gradient norm range: [{np.min(grad_norms[valid_mask]):.6e}, {np.max(grad_norms[valid_mask]):.6e}]\n")
-            f.write(f"Mean gradient norm: {np.mean(grad_norms[valid_mask]):.6e}\n")
-            f.write(f"Median gradient norm: {np.median(grad_norms[valid_mask]):.6e}\n\n")
-            
-            for param_name in param_names:
-                grad_vals = individual_grads[param_name][valid_mask]
-                grad_vals_clean = grad_vals[~np.isnan(grad_vals)]
-                if len(grad_vals_clean) > 0:
-                    f.write(f"Gradient w.r.t. {param_name}:\n")
-                    f.write(f"  Range: [{np.min(grad_vals_clean):.6e}, {np.max(grad_vals_clean):.6e}]\n")
-                    f.write(f"  Mean: {np.mean(grad_vals_clean):.6e}\n")
-                    f.write(f"  Std: {np.std(grad_vals_clean):.6e}\n")
-        
-        # Files generated
-        f.write("\n=== FILES GENERATED ===\n")
-        f.write("- 1d_sigma_slices.png (NEW: Averaged 1D slices for sigma parameters)\n")
-        f.write("- likelihood_vs_parameters.png\n")
-        f.write("- posterior_vs_parameters.png\n")
-        f.write("- gradient_norm_vs_parameters.png\n")
-        f.write("- individual_gradients_vs_parameters.png\n")
-        f.write("- nan_inf_detection.png\n")
-        f.write("- parameter_sensitivity.png\n")
-        for param1, param2 in [(param_names[i], param_names[j]) for i in range(len(param_names)) for j in range(i+1, len(param_names))]:
-            f.write(f"- surfaces_{param1}_vs_{param2}.png\n")
-            f.write(f"- gradient_surfaces_{param1}_vs_{param2}.png\n")
-        f.write("- comprehensive_analysis_summary.txt\n")
-    
-    print(f"Comprehensive analysis completed!")
-    print(f"All outputs saved to: {output_dir}")
-    print(f"Summary saved to: {summary_file}")
-
-def main():
-    parser = argparse.ArgumentParser(description='Gradient sanity check for N-body parameter inference')
-    parser.add_argument('--config', type=str, required=True, help='Path to configuration file')
-    args = parser.parse_args()
-    
-    # Load configuration
-    print(f"Loading configuration from {args.config}")
-    config = load_config(args.config)
-    
-    cuda_num = config.get("cuda_visible_devices", None)
-    if cuda_num is not None:
-        os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(cuda_num)
-        print(f"CUDA device set to: {cuda_num}")
-
-    # Generate mock data
-    print("Generating mock data...")
-    mock_data = generate_mock_data(config)
-    observed_data = mock_data[3]  # output_field
-    
-    print(f"Mock data shape: {observed_data.shape}")
-    print(f"Mock data range: [{np.min(observed_data):.3f}, {np.max(observed_data):.3f}]")
-    
-    # Extract parameters to infer
-    init_params = config['model_params']['blobs_params']
-    
-    # Create log posterior function
-    print("Setting up log posterior function...")
-    log_posterior_fn = get_log_posterior(
-        likelihood_type=config['likelihood_type'],
-        data=observed_data,
-        prior_params=config['prior_params'],
-        prior_type=config['prior_type'],
-        model_fn=model,
-        init_params=init_params,
-        **config['likelihood_kwargs'],
-        **{k: v for k, v in config['model_params'].items() if k != 'blobs_params'}
-    )
-    
-    # Create parameter grid
-    print("Creating parameter grid...")
-    parameter_sets, param_names = create_parameter_grid(config)
-    print(f"Created {len(parameter_sets)} parameter combinations")
-    
-    # Evaluate likelihood and gradients
-    print("Evaluating likelihood and gradients...")
-    log_posterior_values, gradient_values, evaluation_stats = evaluate_likelihood_and_gradients(parameter_sets, log_posterior_fn, config)
-    
-    # Create comprehensive analysis
-    print("Creating comprehensive analysis...")
-    create_comprehensive_analysis(parameter_sets, log_posterior_values, gradient_values, param_names, config, evaluation_stats)
-    
-    print("Gradient sanity check completed!")"""

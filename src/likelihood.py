@@ -12,19 +12,12 @@ def log_likelihood_1(params, data, noise, model_fn, key):
 
 @jax.jit
 def compute_likelihood_1(output_field, data, noise):
-    residuals = output_field - data
-    n_points = data.size
-    chi2 = jnp.sum(residuals ** 2) / noise**2
-    norm = n_points * jnp.log(noise) + 0.5 * n_points * jnp.log(2 * np.pi)
-    return -0.5 * chi2 - norm
-
-def log_likelihood(params, likelihood_type, data, model_fn, key, noise):
-    if likelihood_type == "ll1":
-            log_lik = log_likelihood_1(params, data, noise, model_fn=model_fn, key=key)
-    else:
-        raise ValueError(f"Unknown likelihood_type: {likelihood_type}. Available options: 'll1'")
-    return log_lik
-
+    residuals = output_field - data  # Shape: (..., n_fields)
+    chi2_per_field = jnp.sum(residuals ** 2, axis=(0, 1, 2)) / (noise ** 2)  
+    n_points_per_field = residuals.shape[0] * residuals.shape[1] * residuals.shape[2]
+    norm_per_field = n_points_per_field * jnp.log(noise) + 0.5 * n_points_per_field * jnp.log(2 * jnp.pi)
+    log_likelihood = jnp.sum(-0.5 * chi2_per_field - norm_per_field)
+    return log_likelihood
 
 # Define priors
 @jax.jit

@@ -1,4 +1,4 @@
-results/
+old_results/
 src/__pycache__/
 configs/old_configs/
 configs/sampling/

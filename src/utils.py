@@ -86,7 +86,6 @@ def apply_density_scaling(density_field, scaling_type="none"):
                         "'none', 'log', 'sqrt', 'asinh', 'signed_log'.")
     
 # We use the approximation from Robotham & Howlett (2018)
-@partial(jax.jit, static_argnames=['x'])
 def approx_inverse_nfw_cdf(x, rs, c):
     p = 0.3333 - 0.2*jnp.log10(c) + 0.01*c
     a = 1.0 / c 

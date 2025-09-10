@@ -11,9 +11,9 @@ A JAX-based framework for N-body simulations and Bayesian parameter inference us
 ## Features
 
 - **Flexible N-body simulations** with blob-based initialization
-- **Multiple initialization types**: Gaussian and NFW profiles
+- **Multiple initialization types**: Gaussian, NFW, and Plummer profiles
 - **Various velocity distributions**: Cold, virial, and circular
-- **Bayesian parameter inference** using HMC, NUTS, MALA or Random Walk samplers
+- **Bayesian parameter inference** using HMC, NUTS, MALA, or Random Walk samplers
 - **Automatic differentiation** for efficient gradient computation
 - **GPU acceleration** with JAX
 - **Comprehensive visualization** with automatic plot generation
@@ -28,7 +28,7 @@ A JAX-based framework for N-body simulations and Bayesian parameter inference us
 - CUDA-compatible GPU (recommended)
 - FFmpeg (for video generation, optional)
 
-Librairies :
+Libraries:
 - jax (>=0.5.3)
 - jaxlib (>=0.5.3)
 - diffrax (>=0.7.0)
@@ -55,254 +55,207 @@ pip install jax jaxlib diffrax blackjax matplotlib numpy
 ```
 For GPU: see [JAX installation guide](https://jax.readthedocs.io/en/latest/installation.html)
 
-### Step 4: Install Optional Tools
-
-```bash
-pip install tqdm
-```
+---
 
 ## Quick Start
 
-This section provides step-by-step instructions to get you started with N-body simulations and parameter inference. The framework supports two main modes: **simulation** and **sampling**. Let's start with a basic simulation.
+This section provides step-by-step instructions to get you started with N-body simulations and parameter inference. The framework supports two main modes: **simulation** and **sampling**.
 
-#### 1. Simulation Mode
+---
+
+### 1. Simulation Mode
 
 Simulation mode runs an N-body simulation with predefined initial conditions and generates comprehensive visualizations.
 
-**Basic Example:**
+#### Example: High-Resolution Simulation
+
+To run a high-resolution simulation with two Gaussian blobs, use the following command:
 
 ```bash
-python src/run_experiments.py --config configs/default_sim.yaml
+python src/run.py --config configs/dwarf_galaxies/2blob/sim/high_res.yaml
 ```
 
 This will:
-- Initialize 3000 particles in 3 different blobs (Gaussian + NFW profiles)
-- Run the simulation for 0.75 time units, with a time resolution of 0.05
-- Generate density field plots, trajectories, and velocity distributions
-- Save all results to `results/nbody_sim_results/`
+- Initialize 6000 particles distributed across two Gaussian blobs.
+- Run the simulation for 4.0 Gyr with a time resolution of 0.001 Gyr.
+- Generate density field plots, trajectories, and velocity distributions.
+- Save all results to `results/nbody_sim_results/`.
 
-**Understanding the Configuration:**
+#### Adding Blobs
 
-The `default_sim.yaml` demonstrates a multi-blob setup:
+You can add more blobs to the simulation by modifying the `blobs_params` section in the configuration file. Each blob can have its own initialization type, position, velocity distribution, and other properties. For example:
 
-```yaml
-mode: sim  # Simulation mode
-
-model_params:
-  G: 5.0           # Strong gravity for dramatic evolution
-  length: 64       # 64³ simulation box
-  t_f: 0.75        # Short simulation time
-  dt: 0.05         # Small timestep for accuracy
-  
-  # Three different blob types:
-  blobs_params:
-    # Blob 1: Gaussian distribution with circular motion
-    - n_part: 1000
-      pos_type: gaussian
-      pos_params:
-        sigma: 8.0
-        center: [12.0, 52.0, 12.0]
-      vel_type: circular
-      vel_params:
-        vel_factor: 1.0
-        
-    # Blob 2: NFW halo with virial equilibrium  
-    - n_part: 1000
-      pos_type: nfw
-      pos_params:
-        rs: 5.0
-        c: 2.0
-        center: [12.0, 12.0, 52.0]
-      vel_type: virial
-      vel_params:
-        virial_ratio: 0.5
-        
-    # Blob 3: Cold Gaussian blob
-    - n_part: 1000
-      pos_type: gaussian
-      pos_params:
-        sigma: 6.0
-        center: [52.0, 12.0, 12.0]
-      vel_type: cold
-      vel_params:
-        vel_dispersion: 0.1
-```
-
-**Customizing Your Simulation:**
-
-1. **Change the physics:**
-   ```yaml
-   G: 1.0          # Weaker gravity
-   softening: 0.5  # More softening
-   t_f: 2.0        # Longer simulation
-   ```
-
-2. **Modify blob properties:**
-   ```yaml
-   blobs_params:
-     - n_part: 2000           # More particles
-       pos_type: gaussian
-       pos_params:
-         sigma: 15.0          # Larger blob
-         center: [32.0, 32.0, 32.0]  # Centered
-       vel_type: circular
-       vel_params:
-         vel_factor: 0.5      # Slower rotation
-     - n_part: 1000           # Add as blobs as needed
-       ...
-   ```
-
-3. **Enable advanced features:**
-   ```yaml
-   plot_settings:
-     enable_energy_tracking: true  # Monitor energy conservation
-     generate_video: 
-       do: true               # Create MP4 animation
-       video_fps: 30
-       video_dpi: 200
-   ```
-
-**Expected Output:**
-
-After running the simulation, you'll find in `results/nbody_sim_results/`:
-
-```
-default_sim_YYYYMMDD_HHMMSS/
-├── config.yaml                          # Copy of your configuration
-├── density_fields_and_positions.png     # Multi-panel density plots
-├── timesteps.png                        # Time evolution snapshots
-├── trajectories.png                     # Particle trajectory plots
-├── velocity_distributions.png           # Velocity analysis
-└── simulation_video.mp4                 # Animation (if enabled)
-```
-
-**Performance Tips:**
-
-- **GPU Usage:** Set `cuda_visible_devices` to your GPU index
-- **Video Generation:** Requires FFmpeg installation, may be long to generate
-- **Memory:** Reduce `n_part` if you encounter memory issues
-
-**Common Blob Configurations:**
-
-```yaml
-# Colliding galaxies
-blobs_params:
-  - n_part: 1500
-    pos_type: nfw
-    pos_params: {rs: 8.0, c: 3.0, center: [20.0, 32.0, 32.0]}
-    vel_type: circular
-    vel_params: {vel_factor: 0.8}
-  - n_part: 1500  
-    pos_type: nfw
-    pos_params: {rs: 6.0, c: 4.0, center: [44.0, 32.0, 32.0]}
-    vel_type: circular
-    vel_params: {vel_factor: 0.8}
-
-# Cluster formation
-blobs_params:
-  - n_part: 800
-    pos_type: gaussian
-    pos_params: {sigma: 5.0, center: [32.0, 32.0, 32.0]}
-    vel_type: virial
-    vel_params: {virial_ratio: 0.3}
-  # Add 4-6 smaller blobs around the main one...
-```
-
-#### 2. Sampling Mode
-
-Sampling mode allows you to infer the initial conditions of an N-body system from observed final density fields using Bayesian parameter inference. This mode leverages MCMC samplers such as NUTS, HMC, MALA, and Random Walk Metropolis.
-
-**Basic Example:**
-
-```bash
-python src/run_experiments.py --config configs/default_sampling_nuts.yaml
-```
-This will:
-
-- Use the NUTS sampler to infer parameters of a single Gaussian blob (e.g., sigma and center).
-- Run 2000 sampling steps with 500 warmup steps for adaptation.
-- Save results to sampling_results.
-- Understanding the Configuration:
-
-The `default_sampling.yaml` demonstrates a simple setup for parameter inference:
-
-```yaml
-mode: sampling  # Sampling mode
-
-model_params:
-  G: 5.0           # Gravitational constant
-  length: 64       # 64³ simulation box
-  t_f: 1.0         # Short simulation time
-  dt: 0.05         # Small timestep for accuracy
-  
-  blobs_params:
-    - n_part: 2000
-      pos_type: gaussian
-      pos_params:
-        sigma: 10.0  
-        center: [32.0, 32.0, 32.0]  
-      vel_type: circular
-      vel_params:
-        vel_factor: 0.5  
-
-prior_params:
-  blob0_sigma: {mu: 10.0, sigma: 5.0}
-  blob0_center: {mu: [32.0, 32.0, 32.0], sigma: 10.0}
-
-sampler: nuts
-num_samples: 2000
-num_warmup: 500
-```
-**Customizing Your Sampling:**
-
-1. **Change the sampler:**
-```yaml
-sampler: hmc  # Use Hamiltonian Monte Carlo
-step_size: 0.01
-num_integration_steps: 50
-```
-2. **Add more blobs:**
 ```yaml
 blobs_params:
-  - n_part: 2000
+  - n_part: 3000
     pos_type: gaussian
     pos_params:
-      sigma: 15.0
-      center: [32.0, 32.0, 32.0]
+      sigma: 6.4
+      center: 48
     vel_type: circular
     vel_params:
-      vel_factor: 0.5
-  - n_part: 1000
+      vel_factor: 0.1
+      vel_dispersion: 0.05
+  - n_part: 3000
     pos_type: nfw
     pos_params:
-      rs: 5.0
-      c: 2.0
-      center: [12.0, 12.0, 52.0]
+      rs: 9.6
+      c: 10.0
+      center: 80
     vel_type: virial
     vel_params:
       virial_ratio: 0.5
+  - n_part: 2000
+    pos_type: plummer
+    pos_params:
+      rs: 5.0
+      center: 64
+    vel_type: cold
+    vel_params:
+      vel_dispersion: 0.02
 ```
-3. **Modify priors:**
+
+#### Units Conversion System
+
+The framework uses a flexible unit conversion system to map simulation units to physical units. These conversions are defined in the `plot_settings` section of the configuration file:
+
 ```yaml
-prior_params:
-  blob0_sigma: {mu: 12.0, sigma: 3.0}
-  blob0_center: {mu: [30.0, 30.0, 30.0], sigma: 5.0}
+units:
+  kpc_per_pixel: 1.5625          # 1 simulation unit = 1.5625 kpc
+  msun_per_mass_unit: 8.46e5     # 1 mass unit = 8.46e5 solar masses
+  gyr_per_time_unit: 1.0         # 1 time unit = 1 Gyr
+  jouleE50_per_unit: 3.94e-8     # 1 energy unit = 3.94e-8 x 10^50 Joules
 ```
-Only parameters with provided prior will be sampled.
-**Expected Outputs:**
+
+These conversions are automatically applied to plots and outputs, ensuring that results are presented in physical units (e.g., kpc, Gyr, solar masses).
+
+#### Customizing the Simulation
+
+1. **Change the Blob Initialization:**
+   - Replace `pos_type: gaussian` with `pos_type: nfw` or `pos_type: plummer` for different density profiles.
+   - Adjust parameters like `sigma`, `rs`, or `c` to modify the blob's shape.
+
+2. **Modify the Velocity Distribution:**
+   - Use `vel_type: cold`, `vel_type: virial`, or `vel_type: circular` for different velocity setups.
+   - Adjust `vel_factor` or `virial_ratio` to control the velocity magnitude.
+
+3. **Enable Additional Features:**
+   - Enable energy tracking:
+     ```yaml
+     plot_settings:
+       enable_energy_tracking: true
+     ```
+   - Generate a video of the simulation:
+     ```yaml
+     generate_video:
+       do: true
+       video_fps: 30
+       video_dpi: 200
+     ```
+
+#### Expected Output
+
+After running the simulation, the results will be saved in a timestamped directory under `results/nbody_sim_results/`:
+
 ```
-default_sampling_nuts_YYYYMMDD_HHMMSS/
+high_res_YYYYMMDD_HHMMSS/
+├── config.yaml                          # Copy of your configuration
+├── density.png                          # Multi-panel density plots
+├── timesteps.png                        # Time evolution snapshots
+├── trajectories.png                     # Particle trajectory plots
+├── velocity.png                         # Velocity analysis
+└── simulation_video.mp4                 # Animation (if enabled)
+```
+
+---
+
+### 2. Sampling Mode
+
+Sampling mode allows you to infer the initial conditions of an N-body system from observed final density fields using Bayesian parameter inference. This mode leverages MCMC samplers such as NUTS, HMC, MALA, and Random Walk Metropolis.
+
+#### Example: Sampling with NUTS
+
+To run a sampling experiment using the NUTS sampler, use the following command:
+
+```bash
+python src/run.py --config configs/dwarf_galaxies/1blob/sampling/low_res/scalar_center/nuts/nuts_v1.yaml
+```
+
+This will:
+- Use the NUTS sampler to infer parameters of a single Gaussian blob (e.g., `sigma` and `center`).
+- Run 2000 sampling steps with 200 warmup steps for adaptation.
+- Save results to `results/sampling_results/`.
+
+#### General Sampling Workflow
+
+1. **Define the Observables:**
+   - Specify the observables (e.g., `density`, `vx`, `vy`, `vz`) in the `model_params` section of the configuration file:
+     ```yaml
+     observable: ["density"]
+     ```
+
+2. **Set Priors:**
+   - Define prior distributions for the parameters to be inferred in the `prior_params` section:
+     ```yaml
+     prior_params:
+       blob0_sigma: {low: 0.5, high: 5.0}
+       blob0_center: {low: 12.0, high: 20.0}
+     ```
+
+3. **Choose a Sampler:**
+   - Select an MCMC sampler (e.g., `nuts`, `hmc`, `mala`, `rwm`) and configure its parameters:
+     ```yaml
+     sampler: nuts
+     num_samples: 2000
+     num_warmup: 200
+     ```
+
+4. **Specify Initial Positions:**
+   - Provide initial values for the parameters to be inferred:
+     ```yaml
+     initial_position:
+       blob0_sigma: 2.1
+       blob0_center: 15.2
+     ```
+
+5. **Run the Sampling:**
+   - Execute the sampling script with the desired configuration file.
+
+#### Customizing the Sampling
+
+1. **Change the Sampler:**
+   - Replace `sampler: nuts` with `hmc`, `mala`, or `rwm` for other sampling methods.
+   - Adjust sampler-specific parameters (e.g., `step_size` for HMC).
+
+2. **Add More Blobs:**
+   - Add additional blobs to the `blobs_params` section with their own initialization and prior settings.
+
+3. **Modify Priors:**
+   - Adjust the `prior_params` to reflect your prior knowledge about the parameters.
+
+4. **Enable Additional Features:**
+   - Enable energy tracking or visualization by modifying the `plot_settings` section.
+
+#### Expected Output
+
+After running the sampling experiment, the results will be saved in a timestamped directory under `results/sampling_results/`:
+
+```
+nuts_v1_YYYYMMDD_HHMMSS/
 ├── config.yaml                          # Copy of your configuration
 ├── trace_sampling.png                   # Trace plots for sampled parameters
 ├── corner_sampling.png                  # Corner plots for posterior distributions
 ├── samples.npz                          # Saved samples in NumPy format
+└── truth.npz                            # True parameter values for comparison
 ```
 
-**Performance Tips:**
-- Warmup Steps: Increase num_warmup for better adaptation in high-dimensional problems.
-- Sampling Steps: Use more num_samples for higher accuracy in posterior estimation.
-- GPU Usage: Ensure cuda_visible_devices is set correctly for faster sampling.
+#### Performance Tips
 
+- **Warmup Steps:** Increase `num_warmup` for better adaptation in high-dimensional problems.
+- **Sampling Steps:** Use more `num_samples` for higher accuracy in posterior estimation.
+- **GPU Usage:** Ensure `cuda_visible_devices` is set correctly for faster sampling.
+
+---
 
 ## References
 
@@ -313,9 +266,4 @@ default_sampling_nuts_YYYYMMDD_HHMMSS/
 ## License
 
 MIT License. See `LICENSE`.
-
----
-
-**Contact:**
-Maintainer: [Lucas Mebille](mailto:lucas.mebille.pro@gmail.com)
 

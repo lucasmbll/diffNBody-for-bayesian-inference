@@ -5,6 +5,7 @@ import yaml
 import matplotlib.pyplot as plt
 import corner
 from datetime import datetime
+from scipy.ndimage import gaussian_filter1d
 
 def load_samples_from_directory(directory):
     samples_path = os.path.join(directory, "samples.npz")
@@ -121,42 +122,45 @@ def compute_rhat(chain_samples, param_name, n_samples):
 
 def compute_ess(samples):
     """
-    Compute effective sample size for a single chain using autocorrelation.
-    
-    Parameters:
-    -----------
-    samples : array
-        1D array of samples
-    
-    Returns:
-    --------
-    float : ESS value
+    Effective Sample Size for one chain using unbiased ACF + Geyer's IPS.
+    Returns ESS = n / tau_int with tau_int >= 1.
     """
-    n = len(samples)
+    x = np.asarray(samples, dtype=float)
+    n = x.size
     if n < 4:
-        return n
-    
-    # Center the samples
-    samples_centered = samples - np.mean(samples)
-    
-    # Compute autocorrelation using FFT
-    f_samples = np.fft.fft(samples_centered, n=2*n)
-    autocorr = np.fft.ifft(f_samples * np.conj(f_samples)).real
-    autocorr = autocorr[:n] / autocorr[0]  # Normalize
-    
-    # Find first negative autocorrelation or use cutoff
-    cutoff = min(n//4, 100)  # Reasonable cutoff
-    first_negative = np.where(autocorr < 0)[0]
-    if len(first_negative) > 0:
-        cutoff = min(cutoff, first_negative[0])
-    
-    # Compute integrated autocorrelation time
-    tau_int = 1 + 2 * np.sum(autocorr[1:cutoff])
-    tau_int = max(tau_int, 1.0)  # Ensure at least 1
-    
-    # ESS = N / (2 * tau_int)
-    ess = n / (2 * tau_int)
-    return max(ess, 1.0)
+        return float(n)
+
+    # de-mean
+    x = x - x.mean()
+
+    # FFT-based autocovariance (unbiased)
+    m = 1 << (2*n - 1).bit_length()             # next pow2 for speed
+    f = np.fft.rfft(x, n=m)
+    acov = np.fft.irfft(f * np.conj(f), n=m)[:n]
+    acov /= (n - np.arange(n))                  # UNBIASED normalization
+    acov0 = acov[0]
+    if acov0 <= 0:
+        return 1.0
+
+    acf = acov / acov0                          # rho_k
+    rho = acf[1:]                               # lags 1..n-1
+
+    # --- Geyer's initial positive sequence (pairwise, monotone) ---
+    # form pair sums: s_j = rho_{2j-1} + rho_{2j}
+    m_pairs = (len(rho) // 2)
+    s = rho[0:2*m_pairs].reshape(-1, 2).sum(axis=1)
+
+    # enforce monotone decreasing and positive
+    s = np.maximum.accumulate(s[::-1])[::-1]    # make nonincreasing
+    s = s[s > 0]                                # keep initial positive sequence
+
+    # reconstruct truncated sum of rho_k from pair sums
+    tau_int = 1.0 + 2.0 * s.sum()
+    tau_int = max(tau_int, 1.0)
+
+    ess = n / tau_int
+    return float(max(ess, 1.0))
+
 
 def plot_rhat_analysis(chain_samples, param_order, n_samples_interval, output_dir):
     """
@@ -180,19 +184,20 @@ def plot_rhat_analysis(chain_samples, param_order, n_samples_interval, output_di
             rhat = compute_rhat(chain_samples, param_name, n_samples)
             rhats.append(rhat)
         
+        # Smooth the R-hat values
+        rhats_smoothed = gaussian_filter1d(rhats, sigma=2)
+        
         # Plot R-hat evolution
-        ax.plot(sample_points, rhats, 'b-', linewidth=2, label='R-hat')
-        
-        
+        ax.plot(sample_points, rhats_smoothed, 'b-', linewidth=2, label='R-hat (smoothed)')
         
         ax.set_xlabel('Number of samples')
         ax.set_ylabel('R-hat')
         ax.set_title(f'R-hat convergence: {param_name}')
         ax.grid(True, alpha=0.3)
-        if min(rhats) > 2.0:
-            ax.set_ylim(min(rhats) if rhats else 0.90, max(rhats) if rhats else 2.0)
+        if min(rhats_smoothed) > 2.0:
+            ax.set_ylim(min(rhats_smoothed) if rhats_smoothed.size > 0 else 0.90, max(rhats_smoothed) if rhats_smoothed else 2.0)
         else:
-            ax.set_ylim(0.95, min(2.0, max(rhats) * 1.1) if rhats else 2.0)
+            ax.set_ylim(0.95, min(2.0, max(rhats_smoothed) * 1.1) if rhats_smoothed.size > 0 else 2.0)
             # Add reference lines
             ax.axhline(y=1.0, color='green', linestyle='--', alpha=0.7, label='Perfect convergence')
             ax.axhline(y=1.01, color='orange', linestyle='--', alpha=0.7, label='Excellent (< 1.01)')
@@ -242,7 +247,10 @@ def plot_ess_analysis(chain_samples, param_order, n_samples_interval, output_dir
                 ess = compute_ess(chain_data)
                 ess_values.append(ess)
             
-            ax.plot(sample_points, ess_values, color=colors[chain_idx], 
+            # Smooth the ESS values
+            ess_values_smoothed = gaussian_filter1d(ess_values, sigma=2)
+            
+            ax.plot(sample_points, ess_values_smoothed, color=colors[chain_idx], 
                    linewidth=2, label=f'Chain {chain_idx + 1}')
         
         # Add reference line (ideal ESS = number of samples)
@@ -675,92 +683,117 @@ def plot_trace_subplots(mcmc_samples, theta, G, t_f, dt, softening, length, n_pa
     return fig, None
 
 def plot_corner_after_burnin(mcmc_samples, theta, G, t_f, dt, softening, length, n_part, method, param_order, burnin=0, save_path=None, chain_samples=None):
-    """
-    Plot corner plot for MCMC samples with blob parameters.
-    Uses all samples (flattened across chains) for the corner plot.
-    
-    Parameters:
-    -----------
-    mcmc_samples : dict
-        Dictionary with flattened samples across all chains
-    chain_samples : dict, optional
-        Dictionary with chain-separated samples (not used for corner plot, but affects title)
-    """    
-    # Prepare data for corner plot
-    samples_list = []
-    labels = []
-    truths = []
-    
+
+    samples_list, labels, truths = [], [], []
     title = "Posterior distribution of initial distribution's parameters with " + method.upper()
     param_info = f'G={G}, tf={t_f}, dt={dt}, L={length}, N={n_part}, softening={softening}'
-    
-    # Add chain information to title if available
     if chain_samples is not None:
         n_chains = len(next(iter(chain_samples.values())))
         n_samples_per_chain = next(iter(chain_samples.values())).shape[1]
         title += f' ({n_chains} chains, {n_samples_per_chain} samples each)'
-    
     title = f"{title}\n{param_info}"
-    
+
     for param_name in param_order:
         if param_name in mcmc_samples:
             param_samples = mcmc_samples[param_name][burnin:]
-            
-            # Handle vector parameters
             if param_samples.ndim > 1 and param_samples.shape[1] > 1:
-                # Treat each coordinate as a separate parameter
                 for coord_idx in range(param_samples.shape[1]):
                     samples_list.append(param_samples[:, coord_idx])
-                    labels.append(f"{param_name}[{coord_idx}]")
-                    
+                    if "blob_center_x" in param_name:
+                        labels.append(f"$\\mu_x[{coord_idx}]$")
+                    elif "blob_center_y" in param_name:
+                        labels.append(f"$\\mu_y[{coord_idx}]$")
+                    elif "blob_center_z" in param_name:
+                        labels.append(f"$\\mu_z[{coord_idx}]$")
+                    elif "sigma" in param_name:
+                        labels.append(f"$\\sigma[{coord_idx}]$")
+                    elif "blob1_center_x" in param_name:
+                        labels.append(f"$\\mu_x[{coord_idx}]$")
+                    elif "blob1_center_y" in param_name:
+                        labels.append(f"$\\mu_y[{coord_idx}]$")
+                    elif "blob1_center_z" in param_name:
+                        labels.append(f"$\\mu_z[{coord_idx}]$")
+                    elif "sigma" in param_name:
+                        labels.append(f"$\\sigma[{coord_idx}]$")
+                    else:
+                        labels.append(f"{param_name}[{coord_idx}]")
                     if param_name in theta:
                         true_val = np.array(theta[param_name])
-                        # Fix: Extract scalar value, not array
                         truths.append(float(true_val[coord_idx]) if true_val is not None and coord_idx < len(true_val) else None)
                     else:
                         truths.append(None)
             else:
                 samples_list.append(param_samples.flatten())
-                labels.append(param_name)
-                
+                if "blob0_center_x" in param_name:
+                    labels.append("$\\mu_x$")
+                elif "blob0_center_y" in param_name:
+                    labels.append("$\\mu_y$")
+                elif "blob0_center_z" in param_name:
+                    labels.append("$\\mu_z$")
+                elif "blob0_center" in param_name:
+                    labels.append("$\\mu$")
+                elif "sigma" in param_name:
+                    labels.append("$\\sigma$")
+                else:
+                    labels.append(param_name)
                 if param_name in theta:
-                    # Fix: Ensure scalar value for non-vector parameters
                     true_val = theta[param_name]
                     truths.append(float(true_val) if not isinstance(true_val, (list, tuple, np.ndarray)) else None)
                 else:
                     truths.append(None)
-    
+
     if not samples_list:
         print("No valid samples for corner plot")
         return None
-    
+
     samples_array = np.column_stack(samples_list)
-    
-    # Create corner plot with better styling for multiple chains
+
+    # --- NEW: clip to high-probability ranges to stabilize smoothing
+    # Use a generous central 99% interval with a small padding.
+    q_lo = np.percentile(samples_array, 0.5, axis=0)
+    q_hi = np.percentile(samples_array, 99.5, axis=0)
+    pad = 0.05 * (q_hi - q_lo)
+    ranges = list(zip(q_lo - pad, q_hi + pad))
+
+    # Optional: pass weights if you have them in mcmc_samples (key "weights")
+    weights = None
+    if "weights" in mcmc_samples:
+        w = np.asarray(mcmc_samples["weights"])[burnin:]
+        if w.ndim == 1 and len(w) == samples_array.shape[0]:
+            weights = w
+
+    # --- UPDATED CORNER CALL: smoother, no raw points, higher resolution
     fig = corner.corner(
         samples_array,
         labels=labels,
         truths=truths,
+        range=ranges,                # clip long tails
         show_titles=True,
         title_kwargs={"fontsize": 12},
         label_kwargs={"fontsize": 12},
         quantiles=[0.16, 0.5, 0.84],
         levels=(0.68, 0.95),
-        plot_contours=True,
         fill_contours=True,
-        bins=40,
-        smooth=1.0,
-        color='blue',
-        truth_color='red',
-        hist_kwargs={'density': True, 'alpha': 0.7}
+        plot_contours=True,
+        plot_datapoints=False,       # <- removes noisy scatter
+        bins=80,                     # <- higher resolution
+        smooth=2.0,                  # <- stronger 2D Gaussian smoothing
+        smooth1d=1.5,                # <- smooth 1D marginals too
+        max_n_ticks=4,               # cleaner axes
+        color="tab:blue",
+        truth_color="tab:red",
+        hist_kwargs={"alpha": 1.0, "linewidth": 1.0},
+        contour_kwargs={"linewidths": 1.6},
+        weights=weights              # if provided
     )
-    
-    fig.suptitle(title, fontsize=14)
-    fig.subplots_adjust(top=0.92)  # Adjust for the suptitle
+
+    # If you want a title, uncomment:
+    # fig.suptitle(title, fontsize=14)
+    # fig.subplots_adjust(top=0.92)
 
     if save_path:
-        fig.savefig(save_path, bbox_inches='tight', dpi=150)
-    
+        fig.savefig(save_path, bbox_inches='tight', dpi=200)
+
     return fig
 
 if __name__ == "__main__":

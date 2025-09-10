@@ -232,7 +232,7 @@ def initialize_blob(params_blob, fixed_params_blob, other_params_blob, params_in
         else:
             c_idx = fixed_param_order.index('c')
             c = fixed_params_blob[c_idx]
-        positions = initialize_nfw_positions(n_part, rs, c, length, pos_key)
+        positions = initialize_nfw_positions(n_part, center, rs, c, length, pos_key)
 
     elif pos_type == 'plummer':
         if 'rs' in changing_param_order:
@@ -241,7 +241,7 @@ def initialize_blob(params_blob, fixed_params_blob, other_params_blob, params_in
         else:
             rs_idx = fixed_param_order.index('rs')
             rs = fixed_params_blob[rs_idx]
-        positions = initialize_plummer_positions(n_part, rs, length, pos_key)
+        positions = initialize_plummer_positions(n_part, center, rs, length, pos_key)
     
     else:
         raise ValueError(f"Unknown position type: {pos_type}")

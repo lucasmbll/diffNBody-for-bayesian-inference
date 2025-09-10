@@ -121,7 +121,7 @@ def main(config_path):
         data_key
     )
 
-    initial_field, final_field, final_observable_field, sol_ts, sol_ys, masses = result
+    initial_field, final_field, final_observable_field, sol_ts, sol_ys, masses = result 
 
     print('Compute FFT and Power Spectrum of the simulation outputs')
 
@@ -130,31 +130,6 @@ def main(config_path):
     fft_initial, k_center_initial, power_spectrum_initial = compute_fft_and_power_spectrum_3d_fields(initial_field, length)
     fft_final, k_center_final, power_spectrum_final = compute_fft_and_power_spectrum_3d_fields(final_field, length)
     
-    """# Test difference between observable field of data and other generated from other params
-    # Generate ten other fields with different params
-    list_of_difference = []
-    list_se = []
-    for i in range(100):
-        random_key = jax.random.PRNGKey(i + 1)
-        random_params = jax.random.normal(random_key, shape=data_params.shape) + data_params
-        print(random_params)
-        _, _, observable_field, _, _, _ = model_fn(random_params, random_key)
-        residual = observable_field - final_observable_field
-        diff = jnp.linalg.norm(residual)
-        se = jnp.sum(residual ** 2)
-        list_of_difference.append(diff)
-        list_se.append(se)
-        print(f"Difference for random params {i + 1}: {diff:.4f}, Sum of squared errors: {se:.4f}")
-    print("Differences between observable field of data and other generated from other params:")
-    print(list_of_difference)
-    print("Sum of squared errors:")
-    print(list_se)
-    print("Mean difference:", jnp.mean(jnp.array(list_of_difference)))
-    print("Mean sum of squared errors:", jnp.mean(jnp.array(list_se)))
-    print("Standard deviation of differences:", jnp.std(jnp.array(list_of_difference)))
-    print("Standard deviation of sum of squared errors:", jnp.std(jnp.array(list_se)))
-
-    return """
     if mode == "sim":
         print(f"Simulation completed.")
         print(f"Total particles: {n_part}, Total mass: {total_mass:.2f}")
@@ -441,17 +416,32 @@ def main(config_path):
         return
 
     # Load data
-    data = final_observable_field 
+    noise_rate = model_params.get("noise_rate", 0.1)  # Default noise rate
+    n_fields = final_observable_field.shape[-1]  
+    noise = jnp.zeros_like(final_observable_field) 
+    noise_levels = jnp.zeros(n_fields) 
+    noise_keys = jax.random.split(data_key, n_fields) 
+    for i in range(n_fields):
+        field = final_observable_field[..., i]  
+        rms_value = jnp.sqrt(jnp.mean(field**2))  
+        noise_level = noise_rate * rms_value 
+        noise_levels = noise_levels.at[i].set(noise_level) 
+        noise = noise.at[..., i].set(jax.random.normal(noise_keys[i], field.shape) * noise_level)  
 
-    # Likelihood
-    likelihood_type = config.get("likelihood_type", None)
-    likelihood_kwargs = config.get("likelihood_kwargs", {})
-    noise = likelihood_kwargs.get("noise", 1.0)
+    # Add noise to the final observable field
+    data = final_observable_field + noise
     
-    data = data + noise * jax.random.normal(data_key, data.shape)  
 
+    """""
+    from sim_plots import plot_density_fields_and_positions
+    fig = plot_density_fields_and_positions(
+            G, t_f, dt, length, n_part, noise, sol_ys[-1, 0], data, sol_ys[-1, 0],
+           density_scaling=density_scaling, solver=solver, kpc_per_pixel=kpc_per_pixel)
+    fig.savefig(os.path.join(base_dir, "noise.png")) 
+    """""
+    
     from likelihood import log_likelihood_1
-    log_likelihood_fn = lambda params: log_likelihood_1(params, data, noise, model_fn, data_key)
+    log_likelihood_fn = lambda params: log_likelihood_1(params, data, noise_levels, model_fn, data_key)
 
     if mode in ["sampling", "grid"]:
         # Prior 
@@ -491,10 +481,6 @@ def main(config_path):
     if mode in ["sampling", "mle"]:
         from utils import params_init
         init_params = params_init(params_infos, initial_position)
-
-    if likelihood_type is None:
-        raise ValueError("No likelihood type specified in config file. Please provide 'likelihood_type' in your configuration.")
-
     
     if mode == "sampling":
         print('Starting sampling process...')
@@ -627,15 +613,15 @@ def main(config_path):
                 for j, key in enumerate(params_infos[i]['changing_param_order']):
                     print(f"blob{i}_{key}: {best_params[i, j]:.6f}\n")
        
-        if len(parameter_sets) < 50000:
-            print(f"Evaluating gradients for {len(parameter_sets)} parameter sets using mini-batch computation...")
-            posterior_gradient_values, likelihood_gradient_values, evaluation_stats_grad, valid_mask_grad = evaluate_gradients(parameter_sets, mini_batch_size_grad, log_posterior_fn, log_prior_fn)
+        #if len(parameter_sets) < 50000:
+            #print(f"Evaluating gradients for {len(parameter_sets)} parameter sets using mini-batch computation...")
+            #posterior_gradient_values, likelihood_gradient_values, evaluation_stats_grad, valid_mask_grad = evaluate_gradients#(parameter_sets, mini_batch_size_grad, log_posterior_fn, log_prior_fn)
 
-            print("Creating quiver plot of gradients on the parameter surface...")
-            quiver_grad_surface(parameter_sets, log_lik_values, log_posterior_values, likelihood_gradient_values, posterior_gradient_values, params_labels, valid_mask_grad, base_dir)
+            #print("Creating quiver plot of gradients on the parameter surface...")
+            #quiver_grad_surface(parameter_sets, log_lik_values, log_posterior_values, likelihood_gradient_values, #posterior_gradient_values, params_labels, valid_mask_grad, base_dir)
         
-        else:
-            print(f"Skipping gradient evaluation and quiver plot for {len(parameter_sets)} parameter sets (too many points).")
+        #else:
+            #print(f"Skipping gradient evaluation and quiver plot for {len(parameter_sets)} parameter sets (too many points).")
 
         return
     
