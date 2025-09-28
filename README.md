@@ -37,8 +37,8 @@ Libraries:
 ### Step 1: Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/nbody-inverse-sampling.git
-cd nbody-inverse-sampling
+git clone https://github.com/yourusername/diffNBody-for-bayesian-inference.git
+cd diffNBody-for-bayesian-inference
 ```
 
 ### Step 2: Create a Conda Environment (Recommended)
