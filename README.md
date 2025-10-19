@@ -1,4 +1,4 @@
-# N-Body Inverse Sampling
+# Cold Dark Matter Differentiable Nbody simulator & MCMC sampler of initial conditions
 
 A JAX-based framework for N-body simulations and Bayesian parameter inference using gradient-based MCMC sampling. This package allows you to run gravitational N-body simulations with flexible blob-based initialization and perform parameter inference to recover initial conditions from final density fields.
 
